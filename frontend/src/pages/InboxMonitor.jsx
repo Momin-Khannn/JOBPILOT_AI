@@ -27,6 +27,7 @@ export default function InboxMonitor() {
     try {
       await api.classifyInbox(form)
       await load()
+      setForm({ from: '', subject: '', body: '' })
       setError('')
     } catch (err) {
       setError(err.message)
@@ -69,9 +70,9 @@ export default function InboxMonitor() {
             <article className="panel inbox-event" key={event.id}>
               <Inbox size={20} />
               <div>
-                <h2>{event.classification.intent}</h2>
+                <h2>{event.classification?.intent || 'Message'}</h2>
                 <p>{event.subject}</p>
-                <strong>{event.classification.confidence}% confidence · {event.classification.action}</strong>
+                <strong>{event.classification?.confidence ?? '--'}% confidence · {event.classification?.action || 'Review message'}</strong>
               </div>
             </article>
           ))}

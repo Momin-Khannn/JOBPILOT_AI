@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /goal
+Disallow: /jobs
+Disallow: /resume
+Disallow: /profile
+Disallow: /applications
+Disallow: /career-lab
+Disallow: /followups
+Disallow: /inbox
+Disallow: /gmail
+Disallow: /whatsapp
+Disallow: /settings
+
+Sitemap: https://jobpilot.ai/sitemap.xml

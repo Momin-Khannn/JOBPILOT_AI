@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git and GitHub Workflow"
+  short_description: "Guide safe Git and GitHub portfolio workflows"
+  default_prompt: "Use $git-github-workflow to prepare and publish a clean GitHub project."

@@ -1,29 +1,38 @@
 {
   "name": "jobpilot-backend",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test",
+    "migrate:postgres": "node scripts/migrate-sqlite-to-postgres.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.3",
     "axios": "^1.7.9",
+    "better-sqlite3": "^12.10.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-async-errors": "^3.1.1",
     "express-rate-limit": "^7.5.0",
-    "googleapis": "^140.0.1",
+    "file-type": "^21.3.4",
+    "googleapis": "^150.0.1",
     "helmet": "^7.2.0",
     "mammoth": "^1.9.0",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
+    "nodemailer": "^9.0.0",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.22.0",
+    "stripe": "^22.2.2",
     "twilio": "^5.4.0",
-    "uuid": "^10.0.0"
+    "uuid": "^11.1.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

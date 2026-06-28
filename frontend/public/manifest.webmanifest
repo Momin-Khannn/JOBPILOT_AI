@@ -1,7 +1,7 @@
 {
   "name": "JobPilot AI",
   "short_name": "JobPilot",
-  "description": "Review-first AI job application assistant.",
+  "description": "JobPilot AI v2.0.1 — review-first career and job application assistant.",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#f6f4ef",

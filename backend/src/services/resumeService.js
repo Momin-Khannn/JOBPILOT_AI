@@ -1,4 +1,5 @@
 import { parseResumeText } from './aiService.js'
+import { validateResumeUpload } from './fileValidationService.js'
 
 export async function extractText(buffer, mimetype = '', originalName = '') {
   const type = mimetype.toLowerCase()
@@ -16,7 +17,11 @@ export async function extractText(buffer, mimetype = '', originalName = '') {
     return result.value
   }
 
-  return buffer.toString('utf8')
+  if (type.startsWith('text/') || name.endsWith('.txt')) return buffer.toString('utf8')
+
+  const error = new Error('Unsupported resume format. Upload a PDF, DOCX, or TXT file.')
+  error.status = 415
+  throw error
 }
 
 export async function parseResumeUpload(file) {
@@ -26,7 +31,8 @@ export async function parseResumeUpload(file) {
     throw error
   }
 
-  const rawText = await extractText(file.buffer, file.mimetype, file.originalname)
+  const verifiedFile = await validateResumeUpload(file)
+  const rawText = await extractText(file.buffer, verifiedFile.mime, verifiedFile.fileName)
   if (!rawText || rawText.trim().length < 40) {
     const error = new Error('Could not extract enough text. Please upload a text-based PDF, DOCX, or TXT resume.')
     error.status = 422
@@ -36,5 +42,12 @@ export async function parseResumeUpload(file) {
   return {
     rawText,
     profile: parseResumeText(rawText),
+    file: verifiedFile,
   }
+}
+
+export function sanitizeResume(resume) {
+  if (!resume) return null
+  const { rawText, fileBase64, ...safeResume } = resume
+  return safeResume
 }

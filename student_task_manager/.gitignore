@@ -1,0 +1,24 @@
+# Flutter and Dart generated files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Local configuration (never commit real project values)
+.env
+
+# Android signing files
+android/key.properties
+*.jks
+*.keystore
+
+# Operating system files
+.DS_Store
+Thumbs.db

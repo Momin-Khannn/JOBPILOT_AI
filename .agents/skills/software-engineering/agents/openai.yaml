@@ -1,0 +1,4 @@
+interface:
+  display_name: "Software Engineering"
+  short_description: "Create clear SRS, UML, testing, and SDLC docs"
+  default_prompt: "Use $software-engineering to create clear project requirements, diagrams, and tests."

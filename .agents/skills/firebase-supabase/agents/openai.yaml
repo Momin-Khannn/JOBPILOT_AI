@@ -1,0 +1,4 @@
+interface:
+  display_name: "Firebase and Supabase"
+  short_description: "Connect apps to Firebase or Supabase safely"
+  default_prompt: "Use $firebase-supabase to choose and connect a managed backend safely."

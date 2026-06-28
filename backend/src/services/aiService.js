@@ -5,8 +5,44 @@ const skillCatalog = [
   'graphql', 'html', 'css', 'tailwind', 'git', 'power bi', 'excel', 'etl', 'authentication',
 ]
 
+const skillAliases = {
+  javascript: ['javascript', 'java script', 'js'],
+  typescript: ['typescript', 'type script'],
+  'node.js': ['node.js', 'node js', 'nodejs'],
+  node: ['node.js', 'node js', 'nodejs'],
+  postgresql: ['postgresql', 'postgres', 'postgre sql'],
+  mongodb: ['mongodb', 'mongo db'],
+  'scikit-learn': ['scikit-learn', 'scikit learn', 'sklearn'],
+  'machine learning': ['machine learning', 'ml'],
+  'data science': ['data science', 'data analytics'],
+  'rest api': ['rest api', 'restful api'],
+  'rest apis': ['rest apis', 'restful apis', 'rest api', 'restful api'],
+  'power bi': ['power bi', 'powerbi'],
+}
+
+const stopWords = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'is', 'it', 'of', 'on',
+  'or', 'our', 'that', 'the', 'this', 'to', 'we', 'will', 'with', 'you', 'your', 'role', 'work',
+])
+
 function tokenize(text = '') {
-  return text.toLowerCase().replace(/[^a-z0-9+#. ]/g, ' ').split(/\s+/).filter(Boolean)
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9+#. ]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 1 && !stopWords.has(token))
+}
+
+function includesSkill(text, skill) {
+  const aliases = skillAliases[String(skill).toLowerCase()] || [skill]
+  return aliases.some((alias) => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text)
+  })
+}
+
+function uniqueTokens(text) {
+  return new Set(tokenize(text))
 }
 
 function sentenceCase(value) {
@@ -22,7 +58,7 @@ export function parseResumeText(text = '') {
   const linkedIn = clean.match(/https?:\/\/(www\.)?linkedin\.com\/[^\s]+/i)?.[0] || ''
   const github = clean.match(/https?:\/\/(www\.)?github\.com\/[^\s]+/i)?.[0] || ''
   const skills = skillCatalog
-    .filter(skill => lower.includes(skill))
+    .filter(skill => includesSkill(lower, skill))
     .map(skill => skill === 'node' ? 'Node.js' : skill.split(' ').map(sentenceCase).join(' '))
 
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
@@ -38,6 +74,27 @@ export function parseResumeText(text = '') {
     .slice(0, 4)
     .map(line => ({ degree: line, institution: '', year: line.match(/\b(20\d{2}|19\d{2})\b/)?.[0] || '' }))
 
+  const experienceLines = lines
+    .filter(line => /developer|engineer|analyst|intern|manager|assistant|project|built|created|designed|implemented|managed|led|improved/i.test(line))
+    .slice(0, 8)
+  const hasMetrics = /\b\d+(?:\.\d+)?%|\b\d+\+|\b\d{2,}\b/.test(clean)
+  const hasSummarySection = /\b(summary|profile|objective)\b/i.test(text)
+  const hasSkillsSection = /\b(skills|technologies|technical skills|tools)\b/i.test(text)
+  const hasExperienceSection = /\b(experience|employment|work history|projects)\b/i.test(text)
+  const hasEducationSection = /\b(education|academic|university|college|degree)\b/i.test(text)
+  const rawScore =
+    (email ? 8 : 0) +
+    (phone ? 7 : 0) +
+    (linkedIn || github ? 5 : 0) +
+    (hasSummarySection ? 10 : clean.length >= 250 ? 5 : 0) +
+    (hasSkillsSection ? 10 : 0) +
+    Math.min(15, skills.length * 2) +
+    (hasExperienceSection ? 12 : experienceLines.length ? 6 : 0) +
+    (hasEducationSection ? 10 : education.length ? 6 : 0) +
+    (hasMetrics ? 8 : 0) +
+    (clean.length >= 700 && clean.length <= 9000 ? 10 : clean.length >= 350 ? 5 : 0) +
+    (lines.length >= 8 ? 5 : 0)
+
   const summary = skills.length
     ? `Candidate with experience across ${skills.slice(0, 5).join(', ')} and a profile suitable for software, data, and technical roles.`
     : 'Candidate profile parsed from the uploaded resume. Add more explicit skills and achievements to improve matching.'
@@ -51,15 +108,24 @@ export function parseResumeText(text = '') {
     summary,
     skills: [...new Set(skills)],
     education,
-    experience: lines
-      .filter(line => /developer|engineer|analyst|intern|manager|assistant|project/i.test(line))
-      .slice(0, 6)
+    experience: experienceLines
+      .slice(0, 8)
       .map(line => ({ title: line, company: '', duration: '', bullets: [] })),
-    atsScore: Math.min(92, 45 + skills.length * 5 + (email ? 8 : 0) + (phone ? 7 : 0) + (education.length ? 8 : 0)),
+    atsScore: Math.min(100, rawScore),
+    atsBreakdown: {
+      contact: (email ? 8 : 0) + (phone ? 7 : 0),
+      links: linkedIn || github ? 5 : 0,
+      content: Math.min(45, (hasSummarySection ? 10 : 0) + (hasSkillsSection ? 10 : 0) + skills.length * 2 + (hasExperienceSection ? 12 : 0)),
+      education: hasEducationSection ? 10 : education.length ? 6 : 0,
+      impact: hasMetrics ? 8 : 0,
+      readability: (clean.length >= 700 && clean.length <= 9000 ? 10 : clean.length >= 350 ? 5 : 0) + (lines.length >= 8 ? 5 : 0),
+    },
     gaps: [
       ...(skills.length < 6 ? ['Add a dedicated skills section with tools and technologies from target jobs.'] : []),
       ...(!linkedIn ? ['Add a LinkedIn profile link for recruiter trust.'] : []),
-      ['Quantify achievements with metrics where possible.'][0],
+      ...(!hasSummarySection ? ['Add a short professional summary tailored to your target role.'] : []),
+      ...(!hasExperienceSection ? ['Use a clear experience or projects section with role-relevant achievements.'] : []),
+      ...(!hasMetrics ? ['Quantify achievements with metrics where possible.'] : []),
     ].slice(0, 5),
     topMatches: inferTopMatches(skills, clean),
     rawLength: clean.length,
@@ -78,31 +144,33 @@ function inferTopMatches(skills, text) {
 }
 
 export function scoreJobMatch(profileOrText, job) {
-  const profile = typeof profileOrText === 'string' ? parseResumeText(profileOrText) : profileOrText
+  const profile = (typeof profileOrText === 'string' ? parseResumeText(profileOrText) : profileOrText) || {}
+  job ||= {}
   const profileText = [
     profile?.summary,
     ...(profile?.skills || []),
     ...(profile?.topMatches || []),
   ].join(' ')
 
-  const profileTokens = new Set(tokenize(profileText))
-  const jobTokens = tokenize(`${job.title} ${job.description} ${(job.tags || []).join(' ')}`)
-  const jobSkillTokens = (job.tags || []).map(tag => tag.toLowerCase())
-  const matchedSkills = jobSkillTokens.filter(skill =>
-    profileText.toLowerCase().includes(skill) ||
-    skill.split(/\s+/).some(part => profileTokens.has(part))
-  )
-
-  const overlap = jobTokens.filter(token => profileTokens.has(token)).length
-  const semantic = Math.min(45, overlap * 5)
-  const skillScore = Math.min(35, matchedSkills.length * 12)
-  const titleBoost = (profile.topMatches || []).some(role => job.title.toLowerCase().includes(role.toLowerCase().split(' ')[0])) ? 10 : 0
-  const score = Math.max(42, Math.min(98, 42 + semantic + skillScore + titleBoost))
-  const missingSkills = (job.tags || []).filter(tag => !matchedSkills.includes(tag.toLowerCase())).slice(0, 5)
+  const profileTokens = uniqueTokens(profileText)
+  const jobTokens = uniqueTokens(`${job.title} ${job.description} ${(job.tags || []).join(' ')}`)
+  const jobSkills = [...new Set((job.tags || []).map(tag => String(tag).trim()).filter(Boolean))]
+  const matchedSkills = jobSkills.filter(skill => includesSkill(profileText, skill))
+  const overlap = [...jobTokens].filter(token => profileTokens.has(token)).length
+  const keywordCoverage = jobTokens.size ? overlap / jobTokens.size : 0
+  const skillCoverage = jobSkills.length ? matchedSkills.length / jobSkills.length : keywordCoverage
+  const titleText = `${profile.summary || ''} ${(profile.topMatches || []).join(' ')}`
+  const titleTokens = uniqueTokens(job.title || '')
+  const titleOverlap = titleTokens.size
+    ? [...titleTokens].filter(token => uniqueTokens(titleText).has(token)).length / titleTokens.size
+    : 0
+  const profileQuality = Math.min(1, Number(profile.atsScore || 0) / 100)
+  const score = Math.min(98, Math.round(skillCoverage * 50 + keywordCoverage * 25 + titleOverlap * 15 + profileQuality * 10))
+  const missingSkills = jobSkills.filter(tag => !matchedSkills.includes(tag)).slice(0, 5)
 
   return {
     matchScore: Math.round(score),
-    atsScore: Math.round(Math.min(96, score - 4 + matchedSkills.length * 2)),
+    atsScore: Math.min(98, Math.round(score * 0.7 + profileQuality * 30)),
     missingSkills,
     strengths: matchedSkills.map(sentenceCase).slice(0, 4),
     summary: `${Math.round(score)}% match based on role keywords, required skills, and resume profile signals.`,
@@ -310,7 +378,7 @@ export function draftOutreach({ profile = {}, job = {}, channel = 'gmail' }) {
     return {
       channel,
       subject: '',
-      body: `Hi ${job.recruiterName || 'Hiring Manager'}, I am ${applicantName}. I found the ${job.title} role at ${job.company} and it matches my background in ${skills}. May I share my resume for your review?`,
+      body: `JobPilot message on behalf of ${applicantName}: Hi ${job.recruiterName || 'Hiring Manager'}, thank you for allowing me to contact you here. I am interested in the ${job.title} role at ${job.company}, which matches my background in ${skills}. Would you be open to a brief conversation about the role?`,
     }
   }
 

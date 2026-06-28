@@ -1,0 +1,83 @@
+export default [
+  {
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/build/**"
+    ]
+  },
+  {
+    files: ["**/*.js", "**/*.jsx"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        document: "readonly",
+        window: "readonly",
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        setTimeout: "readonly",
+        fetch: "readonly",
+        FormData: "readonly",
+        URL: "readonly",
+        alert: "readonly"
+      }
+    },
+    rules: {
+      "no-undef": "error",
+      "no-unused-vars": "warn",
+      "no-cond-assign": "error",
+      "no-unreachable": "error",
+      "no-unsafe-finally": "error",
+      "use-isnan": "error",
+      "valid-typeof": "error",
+      "no-constant-condition": "warn",
+      "no-dupe-args": "error",
+      "no-dupe-keys": "error",
+      "no-duplicate-case": "error",
+      "no-ex-assign": "error",
+      "no-extra-boolean-cast": "warn",
+      "no-func-assign": "error",
+      "no-import-assign": "error",
+      "no-invalid-regexp": "error",
+      "no-obj-calls": "error",
+      "no-promise-executor-return": "error",
+      "no-self-assign": "error",
+      "no-setter-return": "error",
+      "no-sparse-arrays": "error",
+      "no-template-curly-in-string": "warn",
+      "no-unmodified-loop-condition": "error",
+      "no-unreachable-loop": "error",
+      "no-unsafe-negation": "error",
+      "no-unsafe-optional-chaining": "error",
+      "no-unused-private-class-members": "warn",
+      "require-atomic-updates": "warn",
+      "use-isnan": "error",
+      "valid-typeof": "error",
+      "getter-return": "error",
+      "no-async-promise-executor": "error",
+      "no-class-assign": "error",
+      "no-compare-neg-zero": "error",
+      "no-control-regex": "warn",
+      "no-debugger": "warn",
+      "no-dupe-class-members": "error",
+      "no-empty-character-class": "warn",
+      "no-empty-pattern": "warn",
+      "no-fallthrough": "error",
+      "no-global-assign": "error",
+      "no-inner-declarations": "warn",
+      "no-irregular-whitespace": "warn",
+      "no-loss-of-precision": "error",
+      "no-misleading-character-class": "error",
+      "no-nonoctal-decimal-escape": "error",
+      "no-octal": "error",
+      "no-regex-spaces": "warn",
+      "no-shadow-restricted-names": "error",
+      "no-this-before-super": "error",
+      "no-useless-backreference": "warn",
+      "no-useless-catch": "warn",
+      "no-with": "error"
+    }
+  }
+];

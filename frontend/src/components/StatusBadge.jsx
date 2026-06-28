@@ -2,11 +2,14 @@ const labels = {
   pending_review: 'Review',
   approved: 'Approved',
   applied: 'Applied',
-  sent_demo: 'Demo sent',
+  sent_demo: 'Sent',
   interview: 'Interview',
   offer: 'Offer',
   rejected: 'Rejected',
   follow_up_needed: 'Follow up',
+  job_closed: 'Job closed',
+  active: 'Active',
+  suspended: 'Suspended',
 }
 
 export default function StatusBadge({ status }) {

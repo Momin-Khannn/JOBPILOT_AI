@@ -1,0 +1,64 @@
+{
+  "name": "jobpilot-desktop",
+  "version": "2.0.1",
+  "private": true,
+  "description": "JobPilot AI desktop app for Windows",
+  "main": "main.mjs",
+  "type": "module",
+  "author": "JobPilot",
+  "scripts": {
+    "start": "electron .",
+    "prepare-pack": "node prepare-pack.mjs",
+    "dist": "node prepare-pack.mjs && electron-builder --win",
+    "dist:dir": "node prepare-pack.mjs && electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "electron": "42.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "ai.jobpilot.desktop",
+    "productName": "JobPilot AI",
+    "copyright": "Copyright © 2026 JobPilot",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.mjs",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "pack",
+        "to": "jobpilot",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "icon": "assets/jobpilot.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JobPilot AI"
+    }
+  }
+}
