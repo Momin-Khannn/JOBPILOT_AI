@@ -11,3 +11,15 @@ desktop/release/
 npm-debug.log*
 __pycache__/
 *.py[cod]
+.agents/
+.codex/
+design-system/
+student_task_manager/
+*.pdf
+DOCUMENTATION.txt
+FutureRequirments.md
+adding stuff.md
+FREE_FOR_DEV_STACK.md
+FUTURE_IMPROVEMENTS.md
+eslint_report.txt
+skills-lock.json
