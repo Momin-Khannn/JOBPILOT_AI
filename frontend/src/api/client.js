@@ -11,12 +11,12 @@ function defaultApiBase() {
 
 const API_BASE = import.meta.env.VITE_API_URL || defaultApiBase()
 const SESSION_KEY = 'jobpilot_client_session'
-let sessionToken = typeof window !== 'undefined' ? window.localStorage.getItem(SESSION_KEY) || '' : ''
+let legacySessionToken = typeof window !== 'undefined' ? window.localStorage.getItem(SESSION_KEY) || '' : ''
 
 export function setSessionToken(token) {
-  sessionToken = token || ''
+  legacySessionToken = token || ''
   if (typeof window !== 'undefined') {
-    if (sessionToken) window.localStorage.setItem(SESSION_KEY, sessionToken)
+    if (legacySessionToken) window.localStorage.setItem(SESSION_KEY, legacySessionToken)
     else window.localStorage.removeItem(SESSION_KEY)
   }
 }
@@ -26,13 +26,14 @@ async function request(path, options = {}) {
     ? options.headers || {}
     : { 'Content-Type': 'application/json', ...(options.headers || {}) }
 
-  if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`
+  if (legacySessionToken) headers.Authorization = `Bearer ${legacySessionToken}`
 
   let response
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
+      credentials: 'include',
     })
   } catch {
     throw new Error('Unable to reach the JobPilot server. Check that the backend is running and the API URL is correct.')
@@ -103,6 +104,20 @@ export const api = {
   refreshJob: (id) => request(`/jobs/${id}/refresh`, { method: 'POST' }),
   queueApplications: (jobs, channel = 'gmail', whatsappRecipientOptIn = false) =>
     request('/applications/queue', { method: 'POST', body: JSON.stringify({ jobs, channel, whatsappRecipientOptIn }) }),
+  applyDirectJob: (jobId, payload = {}) =>
+    request(`/marketplace/jobs/${jobId}/apply`, { method: 'POST', body: JSON.stringify(payload) }),
+  marketplaceConversations: () => request('/marketplace/conversations'),
+  marketplaceMessages: (conversationId) => request(`/marketplace/conversations/${conversationId}/messages`),
+  sendMarketplaceMessage: (conversationId, body) =>
+    request(`/marketplace/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
+  readMarketplaceConversation: (conversationId) =>
+    request(`/marketplace/conversations/${conversationId}/read`, { method: 'POST' }),
+  reportMarketplaceConversation: (conversationId, payload) =>
+    request(`/marketplace/conversations/${conversationId}/report`, { method: 'POST', body: JSON.stringify(payload) }),
+  blockMarketplaceConversation: (conversationId) =>
+    request(`/marketplace/conversations/${conversationId}/block`, { method: 'POST' }),
+  marketplaceNotifications: () => request('/marketplace/notifications'),
+  readMarketplaceNotifications: () => request('/marketplace/notifications/read', { method: 'POST' }),
   applications: () => request('/applications'),
   updateApplication: (id, patch) =>
     request(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

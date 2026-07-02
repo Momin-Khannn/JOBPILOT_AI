@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { api } from '../api/client.js'
 import MetricCard from '../components/MetricCard.jsx'
+import PageHeader from '../components/PageHeader.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 
 export default function DashboardPage() {
@@ -29,22 +30,24 @@ export default function DashboardPage() {
 
   return (
     <div className="stack">
-      <section className="page-heading">
-        <div>
-          <span className="eyebrow">Overview</span>
-          <h1>Operations dashboard</h1>
-          <p>Platform-wide visibility for user growth, application volume, active sessions, and job provider health.</p>
-        </div>
-        <button className="button button-secondary" onClick={syncJobs} disabled={syncing}>
+      <PageHeader
+        title="Operations overview"
+        description="Platform health, client activity, and delivery infrastructure in one working view."
+        meta={overview ? 'Live data' : 'Connecting'}
+        actions={<button className="button button-secondary" onClick={syncJobs} disabled={syncing}>
           <RefreshCw size={15} />
           {syncing ? 'Syncing...' : 'Sync jobs'}
-        </button>
-      </section>
+        </button>}
+      />
 
       <section className="metrics-grid">
         <MetricCard label="Client users" value={summary.totalUsers ?? 0} detail="Registered accounts" />
         <MetricCard label="Active users" value={summary.activeUsers ?? 0} detail="Can sign in" />
         <MetricCard label="Applications" value={summary.totalApplications ?? 0} detail="Across all workspaces" />
+        <MetricCard label="Employers" value={summary.employerUsers ?? 0} detail={`${summary.verifiedCompanies ?? 0} verified companies`} />
+        <MetricCard label="Pending employers" value={summary.pendingEmployers ?? 0} detail="Awaiting owner review" />
+        <MetricCard label="Direct jobs" value={summary.directJobs ?? 0} detail="JobPilot marketplace roles" />
+        <MetricCard label="Safety reports" value={summary.openMarketplaceReports ?? 0} detail="Open marketplace cases" />
         <MetricCard label="Follow-ups" value={summary.totalFollowUps ?? 0} detail="Tracked follow-up items" />
         <MetricCard label="Support" value={summary.totalSupportTickets ?? 0} detail="Tickets and bug reports" />
         <MetricCard label="Analytics" value={summary.totalAnalyticsEvents ?? 0} detail="Consented events" />
@@ -52,8 +55,8 @@ export default function DashboardPage() {
         <MetricCard label="Expired jobs" value={summary.expiredJobs ?? 0} detail="Closed or deadline passed" />
       </section>
 
-      <section className="two-column">
-        <article className="panel">
+      <section className="dashboard-grid">
+        <article className="panel provider-panel">
           <div className="panel-head">
             <div>
               <h2>Job provider health</h2>
@@ -89,7 +92,7 @@ export default function DashboardPage() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel accounts-panel">
           <div className="panel-head">
             <div>
               <h2>Recent client accounts</h2>
@@ -120,7 +123,7 @@ export default function DashboardPage() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel activity-panel">
           <div className="panel-head">
             <div>
               <h2>Latest activity</h2>
@@ -135,6 +138,7 @@ export default function DashboardPage() {
                 <span>{JSON.stringify(log.details)}</span>
               </div>
             ))}
+            {!recentLogs.length && <div className="empty-state">No platform activity has been recorded yet.</div>}
           </div>
         </article>
       </section>

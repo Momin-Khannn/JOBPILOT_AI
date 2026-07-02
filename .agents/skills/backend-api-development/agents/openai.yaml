@@ -1,4 +1,0 @@
-interface:
-  display_name: "Backend API Development"
-  short_description: "Create clear REST APIs with safe CRUD flows"
-  default_prompt: "Use $backend-api-development to design and implement a beginner-friendly REST API."

@@ -146,7 +146,16 @@ const WRITE_ORDER = [
   'billingEvents',
 ]
 
-const META_KEYS = ['integrations', 'providerStatus', 'portalUpdateState']
+const META_KEYS = [
+  'integrations',
+  'providerStatus',
+  'portalUpdateState',
+  'companies',
+  'employerAccessRequests',
+  'conversations',
+  'notifications',
+  'marketplaceReports',
+]
 
 function prepareItems(collection, items = []) {
   const config = COLLECTIONS[collection]

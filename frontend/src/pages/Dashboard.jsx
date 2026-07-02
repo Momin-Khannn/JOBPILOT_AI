@@ -6,6 +6,7 @@ import {
   ArrowRight,
   CheckCircle2,
   FileText,
+  FileUp,
   Send,
   ShieldCheck,
   Sparkles,
@@ -137,16 +138,19 @@ export default function Dashboard() {
 
         <div className="dashboard-side-stack">
           <article className="panel resume-card-premium">
-            <div className="panel-head premium-panel-head"><div><span className="panel-kicker">Career asset</span><h2>Latest resume</h2></div><span className="panel-icon"><FileText size={18} /></span></div>
+            <div className="panel-head premium-panel-head"><div><span className="panel-kicker">Career asset</span><h2>Current CV</h2></div><span className="panel-icon"><FileText size={18} /></span></div>
             {summary?.latestResume ? (
               <div className="resume-summary">
                 <strong>{summary.latestResume.profile?.name || summary.latestResume.fileName}</strong>
                 <p>{summary.latestResume.profile?.summary || 'Resume parsed and saved.'}</p>
                 <div className="tag-row">{(summary.latestResume.profile?.skills || []).slice(0, 6).map(skill => <span key={skill}>{skill}</span>)}</div>
-                <Link className="text-link" to="/profile">Build your shareable CV <ArrowRight size={14} /></Link>
+                <div className="dashboard-cv-actions">
+                  <Link className="button button-secondary" to="/resume"><FileUp size={15} /> Replace CV from device</Link>
+                  <Link className="text-link" to="/profile">Edit public CV page <ArrowRight size={14} /></Link>
+                </div>
               </div>
             ) : (
-              <div className="empty-state"><p>Upload a resume to unlock match scores and ATS guidance.</p><Link className="button button-secondary" to="/resume">Upload resume</Link></div>
+              <div className="empty-state"><p>Upload a CV from your device to unlock match scores and ATS guidance.</p><Link className="button button-primary" to="/resume"><FileUp size={15} /> Upload CV from device</Link></div>
             )}
           </article>
 

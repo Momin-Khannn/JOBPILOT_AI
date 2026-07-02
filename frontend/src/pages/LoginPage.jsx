@@ -63,7 +63,7 @@ export default function LoginPage({ onAuthenticated }) {
         setError('')
         return
       }
-      api.setSessionToken(payload.token)
+      api.setSessionToken('')
       onAuthenticated(payload.user)
       setError('')
       trackEvent('login_password_completed')
@@ -96,7 +96,7 @@ export default function LoginPage({ onAuthenticated }) {
     setBusy(true)
     try {
       const payload = await api.verifyTwoFactor({ challengeId: twoFactor.challengeId, code })
-      api.setSessionToken(payload.token)
+      api.setSessionToken('')
       onAuthenticated(payload.user)
       setError('')
     } catch (err) {

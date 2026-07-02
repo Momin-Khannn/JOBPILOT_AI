@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { billingSnapshot } from '../src/services/billingService.js'
 import { behaviorAwareUpdate, clientActivityProfile } from '../src/services/clientUpdateAgentService.js'
-import { generateGroundedCoverLetter } from '../src/services/geminiService.js'
+import { analyzeInterviewAnswer, generateGroundedCoverLetter } from '../src/services/geminiService.js'
 import { createResumeVerification, evaluateResumeIdentity, verifyResumeCode } from '../src/services/resumeIdentityService.js'
 
 test('resume identity allows matching accounts and blocks unrelated CV identities', () => {
@@ -75,4 +75,40 @@ test('Gemini generative features fail closed when no private key is configured',
     error => error.status === 503
   )
   if (previous) process.env.GEMINI_API_KEY = previous
+})
+
+test('Gemini evaluates typed interview answers with bounded coaching output', async () => {
+  const previousKey = process.env.GEMINI_API_KEY
+  const previousFetch = globalThis.fetch
+  process.env.GEMINI_API_KEY = 'test-key'
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({
+        scores: { clarity: 82, evidence: 91, relevance: 86, structure: 79 },
+        strengths: ['Specific outcome', 'Clear ownership'],
+        improvements: ['Tighten the opening'],
+        coachNote: 'Lead with the situation, then preserve the measurable result.',
+        spokenReply: 'That process improvement gives me a useful picture of how you approach operational problems.',
+      }) }] } }],
+    }),
+  })
+  try {
+    const feedback = await analyzeInterviewAnswer({
+      answer: 'I rebuilt our intake workflow and reduced processing time by 35 percent for 1,200 users.',
+      question: { prompt: 'Tell me about a process you improved.', focus: ['process', 'result'] },
+      profile: { name: 'Alex', skills: ['Operations'] },
+      role: 'Accounts Payable Assistant',
+      company: 'Example Company',
+    })
+    assert.equal(feedback.source, 'gemini-text')
+    assert.equal(feedback.overall, 85)
+    assert.equal(feedback.scores.evidence, 91)
+    assert.equal(feedback.wordCount, 15)
+    assert.match(feedback.spokenReply, /process improvement/i)
+  } finally {
+    globalThis.fetch = previousFetch
+    if (previousKey) process.env.GEMINI_API_KEY = previousKey
+    else delete process.env.GEMINI_API_KEY
+  }
 })

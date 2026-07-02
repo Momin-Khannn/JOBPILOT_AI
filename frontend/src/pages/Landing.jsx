@@ -71,6 +71,7 @@ export default function Landing() {
           <a href="#platform">Platform</a>
           <a href="#workflow">How it works</a>
           <Link to="/support">Support</Link>
+          <a href="/employer/">For employers</a>
           <Link to="/login">Sign in</Link>
           <Link className="button button-primary" to="/signup">Start your workspace <ArrowRight size={16} /></Link>
         </div>

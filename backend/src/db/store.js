@@ -41,6 +41,11 @@ const emptyStore = () => ({
   jobSyncRuns: [],
   interviewSessions: [],
   billingEvents: [],
+  companies: [],
+  employerAccessRequests: [],
+  conversations: [],
+  notifications: [],
+  marketplaceReports: [],
   supportTickets: [],
   analyticsEvents: [],
   portalUpdateState: null,
@@ -261,6 +266,11 @@ function normalizeStore(input = {}) {
     jobSyncRuns: normalizeArray(input.jobSyncRuns),
     interviewSessions: normalizeArray(input.interviewSessions),
     billingEvents: normalizeArray(input.billingEvents),
+    companies: normalizeArray(input.companies),
+    employerAccessRequests: normalizeArray(input.employerAccessRequests),
+    conversations: normalizeArray(input.conversations),
+    notifications: normalizeArray(input.notifications),
+    marketplaceReports: normalizeArray(input.marketplaceReports),
     supportTickets: normalizeArray(input.supportTickets),
     analyticsEvents: normalizeArray(input.analyticsEvents),
     portalUpdateState: input.portalUpdateState && typeof input.portalUpdateState === 'object' ? input.portalUpdateState : null,
@@ -360,6 +370,11 @@ function readStoreFromDb() {
     jobSyncRuns: meta('jobSyncRuns', []),
     interviewSessions: meta('interviewSessions', []),
     billingEvents: meta('billingEvents', []),
+    companies: meta('companies', []),
+    employerAccessRequests: meta('employerAccessRequests', []),
+    conversations: meta('conversations', []),
+    notifications: meta('notifications', []),
+    marketplaceReports: meta('marketplaceReports', []),
     portalUpdateState: meta('portalUpdateState', null),
   })
 }
@@ -546,6 +561,11 @@ function writeStoreToDb(rawStore) {
   insertJson('meta', ['key', 'data'], ['jobSyncRuns', JSON.stringify((store.jobSyncRuns || []).slice(0, 50))])
   insertJson('meta', ['key', 'data'], ['interviewSessions', JSON.stringify((store.interviewSessions || []).slice(0, 100))])
   insertJson('meta', ['key', 'data'], ['billingEvents', JSON.stringify((store.billingEvents || []).slice(0, 1000))])
+  insertJson('meta', ['key', 'data'], ['companies', JSON.stringify((store.companies || []).slice(0, 1000))])
+  insertJson('meta', ['key', 'data'], ['employerAccessRequests', JSON.stringify((store.employerAccessRequests || []).slice(0, 1000))])
+  insertJson('meta', ['key', 'data'], ['conversations', JSON.stringify((store.conversations || []).slice(0, 5000))])
+  insertJson('meta', ['key', 'data'], ['notifications', JSON.stringify((store.notifications || []).slice(0, 5000))])
+  insertJson('meta', ['key', 'data'], ['marketplaceReports', JSON.stringify((store.marketplaceReports || []).slice(0, 2000))])
   insertJson('meta', ['key', 'data'], ['portalUpdateState', JSON.stringify(store.portalUpdateState || null)])
   })(rawStore)
 }
@@ -761,6 +781,11 @@ export async function comparePostgresStores() {
   return postgresRows().compare(await postgres().read())
 }
 
+export async function backupPostgresSnapshot(label = 'manual-backup') {
+  if (!usePostgres()) throw new Error('DATABASE_URL is required to create a PostgreSQL snapshot backup')
+  return postgresRows().backupSnapshot(label)
+}
+
 export async function restorePostgresSnapshot(backupId) {
   if (!usePostgres()) throw new Error('DATABASE_URL is required to restore a PostgreSQL snapshot')
   return postgresRows().restoreSnapshot(backupId)
@@ -804,6 +829,11 @@ export function ownerSummary(store) {
     totalUsers: safeUsers.filter(user => user.role === 'client').length,
     activeUsers: safeUsers.filter(user => user.role === 'client' && user.status === 'active').length,
     suspendedUsers: safeUsers.filter(user => user.role === 'client' && user.status !== 'active').length,
+    employerUsers: safeUsers.filter(user => user.role === 'employer').length,
+    verifiedCompanies: (store.companies || []).filter(company => company.status === 'verified').length,
+    pendingEmployers: (store.employerAccessRequests || []).filter(request => request.status === 'pending').length,
+    directJobs: jobs.filter(job => job.provider === 'jobpilot').length,
+    openMarketplaceReports: (store.marketplaceReports || []).filter(report => report.status === 'open').length,
     totalApplications: (store.applications || []).length,
     totalResumes: (store.resumes || []).length,
     publishedProfiles: (store.profiles || []).filter(profile => profile.published).length,

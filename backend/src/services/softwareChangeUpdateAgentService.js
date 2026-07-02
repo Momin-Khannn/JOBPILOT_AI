@@ -85,8 +85,9 @@ export function isClientVisibleSoftwareFile(file = '') {
   if (/^frontend\/public\/(manifest\.webmanifest|sw\.js|icon\.)/.test(normalized)) return true
   if (/^admin-portal\/src\//.test(normalized)) return true
   if (/^admin-portal\/public\/(manifest\.webmanifest|owner-icon\.|jobpilot-owner\.ico)/.test(normalized)) return true
-  if (/^backend\/src\/routes\/(applications|ai|auth|billing|career|followups|gmail|goal|inbox|jobs|profile|resume|settings|whatsapp)\.js$/.test(normalized)) return true
-  if (/^backend\/src\/services\/(aiService|authService|billingService|careerService|geminiService|gmailService|googleAuthService|jobProviderService|jobService|profileService|resumeIdentityService|resumeService|sendPolicy|whatsappService)\.js$/.test(normalized)) return true
+  if (/^employer-portal\/src\//.test(normalized)) return true
+  if (/^backend\/src\/routes\/(applications|ai|auth|billing|career|employer|followups|gmail|goal|inbox|jobs|marketplace|profile|resume|settings|whatsapp)\.js$/.test(normalized)) return true
+  if (/^backend\/src\/services\/(aiService|authService|billingService|careerService|geminiService|gmailService|googleAuthService|jobProviderService|jobService|marketplaceService|marketplaceSocketService|profileService|resumeIdentityService|resumeService|sendPolicy|whatsappService)\.js$/.test(normalized)) return true
   if (/^backend\/src\/db\/(store|postgresRowStore|rowStoreSchema|storeIntegrity)\.js$/.test(normalized)) return true
   if (/^backend\/src\/middleware\/(auth|validate)\.js$/.test(normalized)) return true
   if (/^backend\/src\/services\/fileValidationService\.js$/.test(normalized)) return true

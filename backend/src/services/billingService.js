@@ -12,6 +12,14 @@ export function billingConfigured() {
   )
 }
 
+export function employerBillingConfigured() {
+  return Boolean(
+    process.env.STRIPE_SECRET_KEY &&
+    process.env.STRIPE_WEBHOOK_SECRET &&
+    process.env.STRIPE_EMPLOYER_PLUS_MONTHLY_PRICE_ID
+  )
+}
+
 export function stripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
     const error = new Error('Paid plans are not configured yet.')
@@ -91,6 +99,40 @@ export async function createPortal(user) {
   return { url: session.url }
 }
 
+export async function createEmployerCheckout(user, company) {
+  if (!employerBillingConfigured()) {
+    const error = new Error('Employer Plus checkout is not configured yet.')
+    error.status = 503
+    throw error
+  }
+  const priceId = process.env.STRIPE_EMPLOYER_PLUS_MONTHLY_PRICE_ID
+  const session = await stripe().checkout.sessions.create({
+    mode: 'subscription',
+    line_items: [{ price: priceId, quantity: 1 }],
+    client_reference_id: user.id,
+    metadata: { userId: user.id, companyId: company.id, plan: 'employer_plus' },
+    subscription_data: { metadata: { userId: user.id, companyId: company.id, plan: 'employer_plus' } },
+    ...(company.plus?.customerId ? { customer: company.plus.customerId } : { customer_email: user.email }),
+    allow_promotion_codes: true,
+    success_url: `${publicFrontendUrl()}/employer/billing?billing=success`,
+    cancel_url: `${publicFrontendUrl()}/employer/billing?billing=cancelled`,
+  })
+  return { url: session.url }
+}
+
+export async function createEmployerPortal(company) {
+  if (!company.plus?.customerId) {
+    const error = new Error('No Stripe customer is attached to this company yet.')
+    error.status = 400
+    throw error
+  }
+  const session = await stripe().billingPortal.sessions.create({
+    customer: company.plus.customerId,
+    return_url: `${publicFrontendUrl()}/employer/billing`,
+  })
+  return { url: session.url }
+}
+
 function eventIdentifiers(event) {
   const object = event.data?.object || {}
   const subscriptionId = typeof object.subscription === 'string'
@@ -98,6 +140,8 @@ function eventIdentifiers(event) {
     : object.parent?.subscription_details?.subscription || object.id || ''
   return {
     userId: object.client_reference_id || object.metadata?.userId || '',
+    companyId: object.metadata?.companyId || '',
+    plan: object.metadata?.plan || '',
     customerId: typeof object.customer === 'string' ? object.customer : '',
     subscriptionId,
   }
@@ -122,6 +166,8 @@ export async function processBillingEvent(event) {
     'invoice.payment_failed',
   ].includes(event.type)
   const subscription = relevant ? await subscriptionForEvent(event) : null
+  const plan = identifiers.plan || subscription?.metadata?.plan || ''
+  const companyId = identifiers.companyId || subscription?.metadata?.companyId || ''
 
   return updateStore((store) => {
     store.billingEvents ||= []
@@ -133,20 +179,36 @@ export async function processBillingEvent(event) {
       (identifiers.subscriptionId && item.billing?.subscriptionId === identifiers.subscriptionId)
     )
 
-    if (user && subscription) {
+    if (user && subscription && plan !== 'employer_plus') {
       user.billing = billingSnapshot(subscription, user.billing)
       if (event.type === 'invoice.payment_failed') user.billing.status = 'past_due'
       user.tier = activeStatus(user.billing.status) ? 'pro' : 'basic'
+    }
+
+
+    const company = (store.companies || []).find(item =>
+      (companyId && item.id === companyId) ||
+      (identifiers.customerId && item.plus?.customerId === identifiers.customerId) ||
+      (identifiers.subscriptionId && item.plus?.subscriptionId === identifiers.subscriptionId)
+    )
+    if (company && subscription && plan === 'employer_plus') {
+      company.plus = billingSnapshot(subscription, company.plus)
+      if (event.type === 'invoice.payment_failed') company.plus.status = 'past_due'
+      const promoted = activeStatus(company.plus.status)
+      for (const job of store.jobs || []) {
+        if (job.companyId === company.id) job.promoted = promoted
+      }
     }
 
     store.billingEvents.unshift({
       id: event.id,
       type: event.type,
       userId: user?.id || identifiers.userId || null,
+      companyId: company?.id || companyId || null,
       processedAt: new Date().toISOString(),
     })
     store.billingEvents = store.billingEvents.slice(0, 1000)
-    return { duplicate: false, matched: Boolean(user), userId: user?.id || null }
+    return { duplicate: false, matched: Boolean(user || company), userId: user?.id || null, companyId: company?.id || null }
   })
 }
 

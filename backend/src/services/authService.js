@@ -175,6 +175,7 @@ export function ensureUserShape(user = {}) {
     phone: user.phone || '',
     location: user.location || 'Pakistan',
     role,
+    companyId: user.companyId || null,
     status: user.status || 'active',
     tier: user.tier || matchedSeed?.tier || 'basic',
     authProvider: user.authProvider || matchedSeed?.authProvider || 'password',
@@ -243,6 +244,21 @@ export function createClientUser({ name, email, password }) {
     name: name || 'Client User',
     email,
     role: 'client',
+    status: 'active',
+    tier: 'basic',
+    authProvider: 'password',
+    emailVerified: false,
+    passwordHash: hashPassword(password),
+    createdAt: new Date().toISOString(),
+  })
+}
+
+export function createEmployerUser({ name, email, password }) {
+  return ensureUserShape({
+    id: uuid(),
+    name: name || 'Employer User',
+    email,
+    role: 'employer',
     status: 'active',
     tier: 'basic',
     authProvider: 'password',

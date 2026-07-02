@@ -10,6 +10,12 @@ const labels = {
   job_closed: 'Job closed',
   active: 'Active',
   suspended: 'Suspended',
+  pending: 'Pending',
+  verified: 'Verified',
+  open: 'Open',
+  reviewing: 'Reviewing',
+  resolved: 'Resolved',
+  dismissed: 'Dismissed',
 }
 
 export default function StatusBadge({ status }) {

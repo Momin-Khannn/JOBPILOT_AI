@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, BadgeCheck, CheckCircle2, Circle, ExternalLink, FileUp, ShieldAlert, Sparkles, Upload } from 'lucide-react'
+import { AlertCircle, BadgeCheck, CheckCircle2, Circle, ExternalLink, FileText, FileUp, RefreshCw, ShieldAlert, Sparkles, Upload } from 'lucide-react'
 import { api } from '../api/client.js'
 
 export default function ResumeManager() {
@@ -14,6 +14,14 @@ export default function ResumeManager() {
   const [verificationSent, setVerificationSent] = useState(false)
   const [verificationBusy, setVerificationBusy] = useState(false)
   const [verificationMessage, setVerificationMessage] = useState('')
+  const [uploadMessage, setUploadMessage] = useState('')
+  const [dragging, setDragging] = useState(false)
+  const fileInputRef = useRef(null)
+
+  function chooseFile(nextFile) {
+    setFile(nextFile || null)
+    setUploadMessage('')
+  }
 
   async function load() {
     const [resumeData, careerData] = await Promise.all([api.latestResume(), api.careerOverview()])
@@ -34,6 +42,9 @@ export default function ResumeManager() {
       setResume(data.resume)
       const careerData = await api.careerOverview()
       setSkillGap(careerData.skillGap)
+      setUploadMessage(resume ? 'Your CV was updated and your career insights were refreshed.' : 'Your CV was uploaded and analyzed.')
+      setFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
       setError('')
     } catch (err) {
       setError(err.message)
@@ -87,31 +98,59 @@ export default function ResumeManager() {
     <div className="stack">
       <section className="page-heading">
         <div>
-          <span className="eyebrow">CV intelligence</span>
-          <h1>Resume Manager</h1>
-          <p>Upload a PDF, DOCX, or text resume so the agent can score jobs and draft better applications.</p>
+          <span className="eyebrow">Your career file</span>
+          <h1>Your CV</h1>
+          <p>Upload or replace your CV directly from this device. JobPilot uses the current file for matching and applications.</p>
         </div>
+        <button type="button" className="button button-primary resume-page-upload-button" onClick={() => fileInputRef.current?.click()}>
+          <FileUp size={17} /> {resume ? 'Replace CV from device' : 'Upload CV from device'}
+        </button>
       </section>
 
       {error && <div className="alert"><AlertCircle size={18} />{error}</div>}
 
       <section className="two-column">
-        <form className="panel upload-panel" onSubmit={upload}>
+        <form className="panel upload-panel resume-upload-panel" onSubmit={upload}>
           <FileUp size={34} />
-          <h2>Upload resume</h2>
-          <p>Text-based resumes work best for parsing. Scanned image-only PDFs are rejected.</p>
-          <input type="file" accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={e => setFile(e.target.files?.[0] || null)} />
+          <h2>{resume ? 'Update your CV' : 'Upload your CV'}</h2>
+          <p>{resume ? 'Choose a newer CV from your device. JobPilot will make it current and refresh your matching insights.' : 'Choose a PDF, DOCX, or text CV from your device. Text-based files work best for parsing.'}</p>
+          <input
+            ref={fileInputRef}
+            id="resume-file"
+            className="file-input-hidden"
+            type="file"
+            accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={event => chooseFile(event.target.files?.[0])}
+          />
+          <label
+            className={`resume-file-picker ${dragging ? 'is-dragging' : ''}`}
+            htmlFor="resume-file"
+            onDragEnter={event => { event.preventDefault(); setDragging(true) }}
+            onDragOver={event => { event.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={event => { event.preventDefault(); setDragging(false); chooseFile(event.dataTransfer.files?.[0]) }}
+          >
+            <FileText size={20} />
+            <span><strong>{file?.name || (resume ? 'Choose a newer CV from this device' : 'Choose your CV from this device')}</strong><small>Browse or drop a PDF, DOCX, or TXT · up to 8 MB</small></span>
+            <b>Select file</b>
+          </label>
           <button className="button button-primary" disabled={!file || loading}>
-            <Upload size={16} /> {loading ? 'Parsing...' : 'Parse resume'}
+            {resume ? <RefreshCw size={16} /> : <Upload size={16} />} {loading ? 'Analyzing CV…' : resume ? 'Update current CV' : 'Upload and analyze'}
           </button>
+          {uploadMessage && <div className="success resume-upload-success"><CheckCircle2 size={17} />{uploadMessage}</div>}
+          <small>Scanned image-only PDFs are rejected because their text cannot be verified reliably.</small>
         </form>
 
         <article className="panel">
-          <h2>Parsed profile</h2>
+          <div className="resume-current-heading">
+            <div><small>Current CV</small><h2>Parsed profile</h2></div>
+            {resume && <button type="button" className="listen-button" onClick={() => fileInputRef.current?.click()}><RefreshCw size={15} /> Replace from device</button>}
+          </div>
           {resume ? (
             <div className="resume-summary">
               <strong>{resume.profile?.name || 'Applicant'}</strong>
               <span>{resume.profile?.email || 'No email found'} · {resume.profile?.phone || 'No phone found'}</span>
+              <small className="resume-source-file"><FileText size={14} /> {resume.fileName || 'Uploaded CV'}{resume.createdAt ? ` · updated ${new Date(resume.createdAt).toLocaleDateString()}` : ''}</small>
               {resume.ownership?.verified ? (
                 <div className="success resume-identity-status"><BadgeCheck size={17} /> CV identity verified</div>
               ) : (

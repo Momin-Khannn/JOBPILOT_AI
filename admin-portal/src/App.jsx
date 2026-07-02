@@ -7,6 +7,7 @@ import ApplicationsPage from './pages/ApplicationsPage.jsx'
 import ActivityPage from './pages/ActivityPage.jsx'
 import ClientUpdatesPage from './pages/ClientUpdatesPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import EmployersPage from './pages/EmployersPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import UsersPage from './pages/UsersPage.jsx'
 
@@ -19,10 +20,8 @@ export default function App() {
   useEffect(() => {
     let active = true
     const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    const googleToken = fragment.get('token')
     const googleError = fragment.get('error')
-    if (googleToken) api.setSessionToken(googleToken)
-    if (googleToken || googleError) {
+    if (googleError) {
       window.history.replaceState({}, '', `${import.meta.env.BASE_URL}`)
     }
     if (googleError) setError(googleError)
@@ -30,8 +29,8 @@ export default function App() {
     api.me()
       .then(({ user: currentUser }) => {
         if (!active) return
+        api.setSessionToken('')
         if (currentUser?.role !== 'owner') {
-          api.setSessionToken('')
           setUser(null)
           setReady(true)
           return
@@ -89,8 +88,9 @@ export default function App() {
 
   if (!ready) {
     return (
-      <div className="loading-shell">
-        <div className="panel"><p className="muted">Loading owner portal...</p></div>
+      <div className="owner-loading" role="status" aria-live="polite">
+        <div className="loading-mark">JP</div>
+        <div><strong>Opening JobPilot Control</strong><span>Checking the owner session...</span></div>
       </div>
     )
   }
@@ -105,6 +105,7 @@ export default function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="applications" element={<ApplicationsPage />} />
+          <Route path="employers" element={<EmployersPage />} />
           <Route path="client-updates" element={<ClientUpdatesPage />} />
           <Route path="activity" element={<ActivityPage />} />
         </Route>

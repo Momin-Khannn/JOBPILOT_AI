@@ -9,6 +9,7 @@ function numberOrZero(value) {
 
 export function normalizeJob(job) {
   return {
+    ...job,
     id: job.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     title: job.title || '',
     company: job.company || '',
@@ -51,6 +52,7 @@ export function searchJobs({ store, userId, query = '', location = '', type = 'A
   const deadlineFilter = String(deadline || 'open').toLowerCase()
 
   return jobs.filter(job => {
+    if (job.provider === 'jobpilot' && job.publicationStatus !== 'published') return false
     const blob = `${job.title} ${job.company} ${job.description} ${job.tags.join(' ')}`.toLowerCase()
     const blacklisted = blacklist.has(job.company.toLowerCase()) || blacklist.has(job.title.toLowerCase())
     const queryOk = !q || blob.includes(q)

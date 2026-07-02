@@ -35,12 +35,11 @@ export function googleAuthConfigured() {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 }
 
-export function googleCallbackUrl({ token, error, role = 'client' } = {}) {
+export function googleCallbackUrl({ error, role = 'client' } = {}) {
   const url = role === 'owner'
     ? new URL('/owner/auth/google/callback', publicAdminUrl())
     : new URL('/auth/google/callback', frontendUrl())
   const fragment = new globalThis.URLSearchParams()
-  if (token) fragment.set('token', token)
   if (error) fragment.set('error', error)
   url.hash = fragment.toString()
   return url.toString()

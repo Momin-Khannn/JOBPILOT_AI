@@ -17,6 +17,8 @@ import JobFeed from './pages/JobFeed.jsx'
 import Landing from './pages/Landing.jsx'
 import LegalPage from './pages/LegalPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import MessagesPage from './pages/MessagesPage.jsx'
+import NotFoundPage from './pages/NotFoundPage.jsx'
 import ProfileBuilder from './pages/ProfileBuilder.jsx'
 import PublicCvPage from './pages/PublicCvPage.jsx'
 import ResumeManager from './pages/ResumeManager.jsx'
@@ -36,8 +38,8 @@ export default function App() {
     api.me()
       .then(({ user: currentUser }) => {
         if (!active) return
+        api.setSessionToken('')
         if (currentUser?.role !== 'client') {
-          api.setSessionToken('')
           setUser(null)
           setReady(true)
           return
@@ -99,6 +101,7 @@ export default function App() {
         <Route path="resume" element={<ResumeManager />} />
         <Route path="profile" element={<ProfileBuilder />} />
         <Route path="applications" element={<Applications />} />
+        <Route path="messages" element={<MessagesPage />} />
         <Route path="career-lab" element={<CareerLab />} />
         <Route path="followups" element={<FollowUps />} />
         <Route path="inbox" element={<InboxMonitor />} />
@@ -106,7 +109,7 @@ export default function App() {
         <Route path="whatsapp" element={<WhatsAppSetup />} />
         <Route path="settings" element={<Settings />} />
       </Route>
-      <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+      <Route path="*" element={<NotFoundPage authenticated={Boolean(user)} />} />
       </Routes>
     </>
   )

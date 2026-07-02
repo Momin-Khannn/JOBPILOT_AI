@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import { AlertCircle, BadgeDollarSign, CalendarPlus, Gauge, KanbanSquare, MessageSquareText, Send, ShieldAlert, Sparkles, Table2 } from 'lucide-react'
 import { api } from '../api/client.js'
 import ApplicationInsight from '../components/ApplicationInsight.jsx'
@@ -10,8 +10,9 @@ import StatusBadge from '../components/StatusBadge.jsx'
 const pipelineGroups = [
   { id: 'review', label: 'Needs review', helper: 'New opportunities', statuses: ['pending_review'] },
   { id: 'ready', label: 'Ready to send', helper: 'Human-approved', statuses: ['approved'] },
-  { id: 'sent', label: 'Sent', helper: 'Waiting for response', statuses: ['applied', 'sent_demo'] },
-  { id: 'progress', label: 'In progress', helper: 'Interviews and offers', statuses: ['interview', 'offer'] },
+  { id: 'sent', label: 'Sent', helper: 'Waiting for response', statuses: ['applied', 'viewed', 'sent_demo'] },
+  { id: 'progress', label: 'In progress', helper: 'Shortlists, interviews and offers', statuses: ['shortlisted', 'interview', 'offer'] },
+  { id: 'hired', label: 'Hired', helper: 'Confirmed outcomes', statuses: ['hired'] },
   { id: 'attention', label: 'Needs attention', helper: 'Follow-ups and outcomes', statuses: ['follow_up_needed', 'rejected', 'job_closed'] },
 ]
 
@@ -108,6 +109,9 @@ export default function Applications() {
   }
 
   function renderActions(app) {
+    if (app.channel === 'jobpilot' || app.sourceType === 'direct') {
+      return <div className="action-row"><Link className="button button-secondary" to="/messages"><MessageSquareText size={15} /> Message employer</Link></div>
+    }
     return (
       <div className="action-row">
         {app.status === 'pending_review' && (

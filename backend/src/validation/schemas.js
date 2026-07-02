@@ -21,12 +21,15 @@ export const registerBodySchema = z.object({
   email,
   password,
   acceptedTerms: z.literal(true),
+  role: z.preprocess(value => ['client', 'employer'].includes(value) ? value : undefined, z.enum(['client', 'employer']).optional()),
+  companyName: cleanString(160).optional().default(''),
+  companyWebsite: optionalHttpUrl.optional().default(''),
 })
 
 export const loginBodySchema = z.object({
   email,
   password: z.string().min(1).max(128),
-  role: z.enum(['client', 'owner']).default('client'),
+  role: z.enum(['client', 'employer', 'owner']).default('client'),
   captchaChallengeId: cleanString(160).optional().default(''),
   captchaAnswer: cleanString(40).optional().default(''),
 })

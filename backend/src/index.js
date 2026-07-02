@@ -6,6 +6,7 @@ import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
 import fs from 'fs'
 import path from 'path'
+import http from 'http'
 import { fileURLToPath } from 'url'
 
 import aiRoutes from './routes/ai.js'
@@ -21,37 +22,59 @@ import goalRoutes from './routes/goal.js'
 import gmailRoutes from './routes/gmail.js'
 import inboxRoutes from './routes/inbox.js'
 import jobsRoutes from './routes/jobs.js'
+import employerRoutes from './routes/employer.js'
+import marketplaceRoutes from './routes/marketplace.js'
 import portalUpdateRoutes from './routes/portalUpdates.js'
 import resumeRoutes from './routes/resume.js'
 import profileRoutes from './routes/profile.js'
 import settingsRoutes from './routes/settings.js'
 import supportRoutes from './routes/support.js'
 import whatsappRoutes from './routes/whatsapp.js'
-import { ensureStore, persistenceMode } from './db/store.js'
+import { ensureStore } from './db/store.js'
 import { ownerPortalEnabled } from './services/authService.js'
 import { startSoftwareChangeUpdateAgent } from './services/softwareChangeUpdateAgentService.js'
 import { startPortalUpdateAgent } from './services/portalUpdateAgentService.js'
 import { publicFrontendUrl } from './config/publicUrls.js'
+import { isKnownClientRoute } from './config/frontendRoutes.js'
+import { attachMarketplaceSockets } from './services/marketplaceSocketService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const app = express()
+const server = http.createServer(app)
 const PORT = process.env.PORT || 4000
 const frontendDist = path.resolve(__dirname, '../../frontend/dist')
 const adminDist = path.resolve(__dirname, '../../admin-portal/dist')
+const employerDist = path.resolve(__dirname, '../../employer-portal/dist')
 
 app.set('trust proxy', 1)
+app.disable('x-powered-by')
 
 function allowedOrigins() {
-  return [
+  const configured = [
     publicFrontendUrl(),
     process.env.FRONTEND_URL,
     process.env.ADMIN_URL,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
+    process.env.EMPLOYER_URL,
   ].filter(Boolean)
+  const development = process.env.NODE_ENV === 'production'
+    ? []
+    : [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+        'http://localhost:3002',
+        'http://127.0.0.1:3002',
+      ]
+
+  return [...configured, ...development].flatMap((value) => {
+    try {
+      return [new URL(value).origin]
+    } catch {
+      return []
+    }
+  })
 }
 
 function isPrivateLanOrigin(origin) {
@@ -72,17 +95,38 @@ await ensureStore()
 startSoftwareChangeUpdateAgent()
 startPortalUpdateAgent()
 
+function originAllowed(origin) {
+  return allowedOrigins().includes(origin) || (process.env.NODE_ENV !== 'production' && isPrivateLanOrigin(origin))
+}
+
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  frameguard: { action: 'deny' },
+  strictTransportSecurity: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+  },
 }))
+
+app.use((req, res, next) => {
+  res.set('Permissions-Policy', 'camera=(), geolocation=(), usb=()')
+  next()
+})
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins().includes(origin) || isPrivateLanOrigin(origin)) {
+    if (!origin || originAllowed(origin)) {
       callback(null, true)
       return
     }
-    callback(new Error(`CORS blocked for origin: ${origin}`))
+    const error = new Error('Request origin is not allowed')
+    error.status = 403
+    callback(error)
   },
   credentials: true,
 }))
@@ -98,6 +142,11 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json', limit: 
 
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true, limit: '2mb' }))
+
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store')
+  next()
+})
 
 app.use('/api/auth/register', rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -155,15 +204,24 @@ app.use('/api/analytics', rateLimit({
   legacyHeaders: false,
 }))
 
+app.use('/api/employer', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many employer workspace requests. Please wait and try again.' },
+}))
+
+app.use('/api/marketplace', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many marketplace requests. Please wait and try again.' },
+}))
+
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    version: process.env.APP_VERSION || '2.0.1',
-    mode: process.env.ENABLE_REAL_SEND === 'true' ? 'real-send' : 'setup-required',
-    ownerPortal: ownerPortalEnabled ? 'enabled' : 'disabled',
-    persistence: persistenceMode(),
-    timestamp: new Date().toISOString(),
-  })
+  res.set('Cache-Control', 'no-store').json({ status: 'ok' })
 })
 
 app.get('/robots.txt', (req, res) => {
@@ -177,12 +235,15 @@ app.get('/robots.txt', (req, res) => {
     'Disallow: /resume',
     'Disallow: /profile',
     'Disallow: /applications',
+    'Disallow: /messages',
     'Disallow: /career-lab',
     'Disallow: /followups',
     'Disallow: /inbox',
     'Disallow: /gmail',
     'Disallow: /whatsapp',
     'Disallow: /settings',
+    'Disallow: /owner',
+    'Disallow: /employer',
     '',
     `Sitemap: ${siteUrl}/sitemap.xml`,
     '',
@@ -229,6 +290,8 @@ app.use('/api/goal', goalRoutes)
 app.use('/api/gmail', gmailRoutes)
 app.use('/api/inbox', inboxRoutes)
 app.use('/api/jobs', jobsRoutes)
+app.use('/api/employer', employerRoutes)
+app.use('/api/marketplace', marketplaceRoutes)
 app.use('/api/portal-updates', portalUpdateRoutes)
 app.use('/api/resume', resumeRoutes)
 app.use('/api/profile', profileRoutes)
@@ -243,12 +306,21 @@ if (ownerPortalEnabled && fs.existsSync(adminDist)) {
   })
 }
 
+if (fs.existsSync(employerDist)) {
+  app.use('/employer', express.static(employerDist))
+  app.get(['/employer', '/employer/*'], (req, res) => {
+    res.sendFile(path.join(employerDist, 'index.html'))
+  })
+}
+
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist))
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next()
     if (req.path === '/owner' || req.path.startsWith('/owner/')) return next()
-    res.sendFile(path.join(frontendDist, 'index.html'))
+    if (req.path === '/employer' || req.path.startsWith('/employer/')) return next()
+    if (!req.accepts('html')) return next()
+    res.status(isKnownClientRoute(req.path) ? 200 : 404).sendFile(path.join(frontendDist, 'index.html'))
   })
 }
 
@@ -267,13 +339,19 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: 'The uploaded file could not be processed.' })
   }
   if (!err.status || err.status >= 500) console.error('[JobPilot API]', err)
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
+  const status = err.status || 500
+  res.status(status).json({
+    error: status >= 500 && process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   })
 })
 
-app.listen(PORT, '0.0.0.0', () => {
+const io = attachMarketplaceSockets(server, allowedOrigins())
+app.set('io', io)
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`JobPilot AI backend running on http://localhost:${PORT}`)
 })
 

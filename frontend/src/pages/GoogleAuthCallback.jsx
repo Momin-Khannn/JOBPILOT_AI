@@ -9,7 +9,6 @@ export default function GoogleAuthCallback({ onAuthenticated }) {
 
   useEffect(() => {
     const fragmentParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    const token = fragmentParams.get('token') || params.get('token')
     const authError = fragmentParams.get('error') || params.get('error')
 
     if (authError) {
@@ -18,15 +17,12 @@ export default function GoogleAuthCallback({ onAuthenticated }) {
       return
     }
 
-    if (!token) {
-      setError('Google sign-in did not return a session.')
-      return
-    }
-
-    api.setSessionToken(token)
     window.history.replaceState({}, '', '/auth/google/callback')
     api.me()
-      .then(({ user }) => onAuthenticated(user))
+      .then(({ user }) => {
+        api.setSessionToken('')
+        onAuthenticated(user)
+      })
       .catch((err) => {
         api.setSessionToken('')
         setError(err.message)

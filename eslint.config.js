@@ -1,3 +1,5 @@
+import react from "eslint-plugin-react";
+
 export default [
   {
     ignores: [
@@ -11,6 +13,9 @@ export default [
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
+      parserOptions: {
+        ecmaFeatures: { jsx: true }
+      },
       globals: {
         document: "readonly",
         window: "readonly",
@@ -21,10 +26,15 @@ export default [
         fetch: "readonly",
         FormData: "readonly",
         URL: "readonly",
+        URLSearchParams: "readonly",
         alert: "readonly"
       }
     },
+    plugins: {
+      react
+    },
     rules: {
+      "react/jsx-uses-vars": "error",
       "no-undef": "error",
       "no-unused-vars": "warn",
       "no-cond-assign": "error",

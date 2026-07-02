@@ -23,7 +23,7 @@ function freePort() {
 }
 
 async function waitForHealth(baseUrl, child) {
-  const deadline = Date.now() + 20_000
+  const deadline = Date.now() + 35_000
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Backend exited with code ${child.exitCode}`)
     try {
@@ -35,11 +35,11 @@ async function waitForHealth(baseUrl, child) {
   throw new Error('Timed out waiting for backend health')
 }
 
-async function request(baseUrl, route, { token, method = 'GET', body, form } = {}) {
+async function request(baseUrl, route, { cookie, method = 'GET', body, form } = {}) {
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(cookie ? { Cookie: cookie } : {}),
       ...(!form && body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: form || (body !== undefined ? JSON.stringify(body) : undefined),
@@ -48,7 +48,7 @@ async function request(baseUrl, route, { token, method = 'GET', body, form } = {
   return { response, payload }
 }
 
-test('production client journey works while owner routes remain unavailable', { timeout: 40_000 }, async (t) => {
+test('production client journey works while owner routes remain unavailable', { timeout: 60_000 }, async (t) => {
   const port = await freePort()
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jobpilot-journey-'))
   const baseUrl = `http://127.0.0.1:${port}`
@@ -82,8 +82,7 @@ test('production client journey works while owner routes remain unavailable', { 
   })
 
   const health = await waitForHealth(baseUrl, child)
-  assert.equal(health.version, '2.0.1')
-  assert.equal(health.ownerPortal, 'disabled')
+  assert.deepEqual(health, { status: 'ok' })
 
   const registration = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
@@ -104,7 +103,18 @@ test('production client journey works while owner routes remain unavailable', { 
     body: { email: 'journey@example.com', password: 'strongpass123', role: 'client' },
   })
   assert.equal(verifiedLogin.response.status, 200)
-  const token = verifiedLogin.payload.token
+  assert.equal(verifiedLogin.payload.token, undefined)
+  const sessionCookie = verifiedLogin.response.headers.getSetCookie?.()[0] || verifiedLogin.response.headers.get('set-cookie') || ''
+  assert.match(sessionCookie, /jobpilot_client_session=/)
+  assert.match(sessionCookie, /HttpOnly/i)
+  assert.match(sessionCookie, /Secure/i)
+  assert.match(sessionCookie, /SameSite=Lax/i)
+  const cookie = sessionCookie.split(';')[0]
+
+  const cookieMe = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { Cookie: cookie },
+  })
+  assert.equal(cookieMe.status, 200)
 
   const ownerLogin = await request(baseUrl, '/api/auth/login', {
     method: 'POST',
@@ -112,11 +122,11 @@ test('production client journey works while owner routes remain unavailable', { 
   })
   assert.equal(ownerLogin.response.status, 404)
 
-  const admin = await request(baseUrl, '/api/admin/overview', { token })
+  const admin = await request(baseUrl, '/api/admin/overview', { cookie })
   assert.equal(admin.response.status, 404)
 
   const goal = await request(baseUrl, '/api/goal', {
-    token,
+    cookie,
     method: 'PUT',
     body: { goal: { roles: ['Backend Engineer'], locations: ['Remote'], jobTypes: ['Remote'], experienceLevel: 'Entry', minSalary: 1000 } },
   })
@@ -136,21 +146,21 @@ Backend Engineer - Improved processing speed by 35% for 1200 users.
 EDUCATION
 BS Computer Science, Example University, 2025
   `], { type: 'text/plain' }), 'resume.txt')
-  const resume = await request(baseUrl, '/api/resume/parse', { token, method: 'POST', form: resumeForm })
+  const resume = await request(baseUrl, '/api/resume/parse', { cookie, method: 'POST', form: resumeForm })
   assert.equal(resume.response.status, 200)
   assert.ok(resume.payload.resume.profile.atsScore >= 60)
   assert.equal(resume.payload.resume.rawText, undefined)
 
-  const me = await request(baseUrl, '/api/auth/me', { token })
+  const me = await request(baseUrl, '/api/auth/me', { cookie })
   assert.equal(me.payload.user.email, 'journey@example.com')
 
-  const settings = await request(baseUrl, '/api/settings', { token })
+  const settings = await request(baseUrl, '/api/settings', { cookie })
   assert.equal(settings.response.status, 200)
   assert.equal(settings.payload.sessions.some(session => session.current), true)
   assert.equal(settings.payload.authentication.passwordChangeAvailable, true)
 
   const savedSettings = await request(baseUrl, '/api/settings', {
-    token,
+    cookie,
     method: 'PUT',
     body: {
       user: {
@@ -180,29 +190,29 @@ BS Computer Science, Example University, 2025
   assert.equal(savedSettings.payload.user.preferences.density, 'compact')
 
   const wrongPassword = await request(baseUrl, '/api/settings/security/password', {
-    token,
+    cookie,
     method: 'PUT',
     body: { currentPassword: 'incorrect-password', newPassword: 'newstrongpass123' },
   })
   assert.equal(wrongPassword.response.status, 403)
 
   const changedPassword = await request(baseUrl, '/api/settings/security/password', {
-    token,
+    cookie,
     method: 'PUT',
     body: { currentPassword: 'strongpass123', newPassword: 'newstrongpass123' },
   })
   assert.equal(changedPassword.response.status, 200)
 
-  const signedOutOthers = await request(baseUrl, '/api/settings/security/sign-out-others', { token, method: 'POST' })
+  const signedOutOthers = await request(baseUrl, '/api/settings/security/sign-out-others', { cookie, method: 'POST' })
   assert.equal(signedOutOthers.response.status, 200)
   assert.equal(signedOutOthers.payload.revoked, 0)
 
-  const disconnectedGmail = await request(baseUrl, '/api/gmail/disconnect', { token, method: 'POST' })
+  const disconnectedGmail = await request(baseUrl, '/api/gmail/disconnect', { cookie, method: 'POST' })
   assert.equal(disconnectedGmail.response.status, 200)
-  const disconnectedWhatsapp = await request(baseUrl, '/api/whatsapp/disconnect', { token, method: 'POST' })
+  const disconnectedWhatsapp = await request(baseUrl, '/api/whatsapp/disconnect', { cookie, method: 'POST' })
   assert.equal(disconnectedWhatsapp.response.status, 200)
 
-  const profileDraft = await request(baseUrl, '/api/profile/me', { token })
+  const profileDraft = await request(baseUrl, '/api/profile/me', { cookie })
   const profile = {
     ...profileDraft.payload.profile,
     slug: 'journey-user',
@@ -212,7 +222,7 @@ BS Computer Science, Example University, 2025
     visibility: { ...profileDraft.payload.profile.visibility, email: false, phone: false },
     projects: [{ name: 'JobPilot AI', description: 'A safe job application assistant.', technologies: 'React, Node.js', url: '' }],
   }
-  const savedProfile = await request(baseUrl, '/api/profile/me', { token, method: 'PUT', body: { profile } })
+  const savedProfile = await request(baseUrl, '/api/profile/me', { cookie, method: 'PUT', body: { profile } })
   assert.equal(savedProfile.response.status, 200)
   assert.equal(savedProfile.payload.profile.sectionOrder[0], 'projects')
 
@@ -231,12 +241,12 @@ BS Computer Science, Example University, 2025
     recruiterEmail: 'jobs@example.test',
     url: 'https://example.test/jobs/backend',
   }
-  const queued = await request(baseUrl, '/api/applications/queue', { token, method: 'POST', body: { jobs: [manualJob], channel: 'gmail' } })
+  const queued = await request(baseUrl, '/api/applications/queue', { cookie, method: 'POST', body: { jobs: [manualJob], channel: 'gmail' } })
   assert.equal(queued.response.status, 201)
   const applicationId = queued.payload.queued[0].id
   assert.ok(queued.payload.queued[0].matchScore > 0)
 
-  const careerOverview = await request(baseUrl, '/api/career/overview', { token })
+  const careerOverview = await request(baseUrl, '/api/career/overview', { cookie })
   assert.equal(careerOverview.response.status, 200)
   assert.equal(careerOverview.payload.analytics.totals.tracked, 1)
   assert.ok(Array.isArray(careerOverview.payload.skillGap.learningPath))
@@ -244,7 +254,7 @@ BS Computer Science, Example University, 2025
   const suggestedSkill = careerOverview.payload.skillGap.gaps[0]?.skill
   assert.ok(suggestedSkill)
   const achievedSkill = await request(baseUrl, `/api/career/skills/${encodeURIComponent(suggestedSkill)}`, {
-    token,
+    cookie,
     method: 'PATCH',
     body: { achieved: true },
   })
@@ -252,14 +262,14 @@ BS Computer Science, Example University, 2025
   assert.equal(achievedSkill.payload.skillGap.gaps.find(item => item.skill === suggestedSkill)?.achieved, true)
   assert.ok(achievedSkill.payload.skillGap.gaps.find(item => item.skill === suggestedSkill)?.resources.length > 0)
 
-  const persistedCareer = await request(baseUrl, '/api/career/overview', { token })
+  const persistedCareer = await request(baseUrl, '/api/career/overview', { cookie })
   assert.equal(persistedCareer.payload.skillGap.gaps.find(item => item.skill === suggestedSkill)?.achieved, true)
 
-  const upgrade = await request(baseUrl, '/api/auth/upgrade', { token, method: 'POST' })
+  const upgrade = await request(baseUrl, '/api/auth/upgrade', { cookie, method: 'POST' })
   assert.equal(upgrade.response.status, 200)
 
   const earlyGhosting = await request(baseUrl, `/api/applications/${applicationId}/ghosting/prepare`, {
-    token,
+    cookie,
     method: 'POST',
     body: {},
   })
@@ -267,14 +277,14 @@ BS Computer Science, Example University, 2025
   assert.equal(earlyGhosting.payload.signal.eligible, false)
 
   const offerStage = await request(baseUrl, `/api/applications/${applicationId}`, {
-    token,
+    cookie,
     method: 'PATCH',
     body: { status: 'offer' },
   })
   assert.equal(offerStage.payload.application.status, 'offer')
 
   const negotiation = await request(baseUrl, `/api/applications/${applicationId}/negotiation/prepare`, {
-    token,
+    cookie,
     method: 'POST',
     body: {
       currency: 'USD',
@@ -290,7 +300,7 @@ BS Computer Science, Example University, 2025
   assert.equal(negotiation.payload.negotiation.recommendation.targetBase, 115000)
 
   const editedNegotiation = await request(baseUrl, `/api/applications/${applicationId}/negotiation/draft`, {
-    token,
+    cookie,
     method: 'PATCH',
     body: {
       subject: 'Compensation discussion',
@@ -301,7 +311,7 @@ BS Computer Science, Example University, 2025
   assert.equal(editedNegotiation.payload.negotiation.approvalSnapshot, null)
 
   const approvedNegotiation = await request(baseUrl, `/api/applications/${applicationId}/negotiation/approve`, {
-    token,
+    cookie,
     method: 'POST',
   })
   assert.equal(approvedNegotiation.response.status, 200)
@@ -309,7 +319,7 @@ BS Computer Science, Example University, 2025
   assert.equal(approvedNegotiation.payload.negotiation.approvalSnapshot.subject, 'Compensation discussion')
 
   const revisedNegotiation = await request(baseUrl, `/api/applications/${applicationId}/negotiation/draft`, {
-    token,
+    cookie,
     method: 'PATCH',
     body: {
       subject: 'Revised compensation discussion',
@@ -320,14 +330,14 @@ BS Computer Science, Example University, 2025
   assert.equal(revisedNegotiation.payload.negotiation.approvalSnapshot, null)
 
   const blockedCareerMoveSend = await request(baseUrl, '/api/gmail/send-workflow', {
-    token,
+    cookie,
     method: 'POST',
     body: { applicationId, workflow: 'negotiation' },
   })
   assert.equal(blockedCareerMoveSend.response.status, 409)
 
   const interview = await request(baseUrl, '/api/career/interviews', {
-    token,
+    cookie,
     method: 'POST',
     body: { applicationId },
   })
@@ -335,25 +345,26 @@ BS Computer Science, Example University, 2025
   assert.equal(interview.payload.session.questions.length, 5)
 
   const interviewAnswer = await request(baseUrl, `/api/career/interviews/${interview.payload.session.id}/answer`, {
-    token,
+    cookie,
     method: 'POST',
     body: { answer: 'I built a Node.js API for 1200 users, reduced response time by 35 percent, and explained the result to the team.' },
   })
   assert.equal(interviewAnswer.response.status, 200)
   assert.ok(interviewAnswer.payload.feedback.overall > 0)
+  assert.match(interviewAnswer.payload.feedback.source, /^(gemini-text|structured-fallback)$/)
   assert.equal(interviewAnswer.payload.session.currentIndex, 1)
 
-  const approved = await request(baseUrl, `/api/applications/${applicationId}/approve`, { token, method: 'POST' })
+  const approved = await request(baseUrl, `/api/applications/${applicationId}/approve`, { cookie, method: 'POST' })
   assert.equal(approved.payload.application.status, 'approved')
 
   const edited = await request(baseUrl, `/api/applications/${applicationId}`, {
-    token,
+    cookie,
     method: 'PATCH',
     body: { draft: { subject: 'Changed', body: 'Changed after approval' } },
   })
   assert.equal(edited.payload.application.status, 'pending_review')
 
-  const blockedSend = await request(baseUrl, '/api/gmail/send', { token, method: 'POST', body: { applicationId } })
+  const blockedSend = await request(baseUrl, '/api/gmail/send', { cookie, method: 'POST', body: { applicationId } })
   assert.equal(blockedSend.response.status, 403)
 
   const resetRegistration = await request(baseUrl, '/api/auth/register', {

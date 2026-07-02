@@ -3,12 +3,12 @@ const defaultApiBase =
 
 const API_BASE = import.meta.env.VITE_API_URL || defaultApiBase
 const SESSION_KEY = 'jobpilot_owner_session'
-let sessionToken = typeof window !== 'undefined' ? window.localStorage.getItem(SESSION_KEY) || '' : ''
+let legacySessionToken = typeof window !== 'undefined' ? window.localStorage.getItem(SESSION_KEY) || '' : ''
 
 export function setSessionToken(token) {
-  sessionToken = token || ''
+  legacySessionToken = token || ''
   if (typeof window !== 'undefined') {
-    if (sessionToken) window.localStorage.setItem(SESSION_KEY, sessionToken)
+    if (legacySessionToken) window.localStorage.setItem(SESSION_KEY, legacySessionToken)
     else window.localStorage.removeItem(SESSION_KEY)
   }
 }
@@ -18,13 +18,15 @@ async function request(path, options = {}) {
     ? options.headers || {}
     : { 'Content-Type': 'application/json', ...(options.headers || {}) }
 
-  if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`
+  headers['X-JobPilot-Portal'] = 'owner'
+  if (legacySessionToken) headers.Authorization = `Bearer ${legacySessionToken}`
 
   let response
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
+      credentials: 'include',
     })
   } catch {
     throw new Error('Unable to reach the JobPilot API. Check that the backend is running and exposed to the admin portal.')
@@ -48,6 +50,8 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   adminOverview: () => request('/admin/overview'),
   adminUpdateUser: (id, patch) => request(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  adminReviewEmployer: (id, patch) => request(`/admin/employers/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  adminReviewMarketplaceReport: (id, patch) => request(`/admin/marketplace-reports/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   clientUpdateStatus: () => request('/admin/client-updates/status'),
   testClientUpdateMailbox: () => request('/admin/client-updates/test-mailbox', { method: 'POST' }),
   gmailAuthUrl: () => request('/gmail/auth-url'),

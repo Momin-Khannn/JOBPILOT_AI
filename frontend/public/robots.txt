@@ -6,11 +6,14 @@ Disallow: /jobs
 Disallow: /resume
 Disallow: /profile
 Disallow: /applications
+Disallow: /messages
 Disallow: /career-lab
 Disallow: /followups
 Disallow: /inbox
 Disallow: /gmail
 Disallow: /whatsapp
 Disallow: /settings
+Disallow: /owner
+Disallow: /employer
 
 Sitemap: https://jobpilot.ai/sitemap.xml

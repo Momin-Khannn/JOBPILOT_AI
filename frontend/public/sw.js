@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jobpilot-static-v201-mobile-1'
+const CACHE_NAME = 'jobpilot-static-v201-pwa-2'
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -14,7 +14,10 @@ self.addEventListener('install', event => {
       '/robots.txt',
       '/sitemap.xml',
       '/manifest.webmanifest',
-      '/icon.svg'
+      '/icon.svg',
+      '/icon-192.png',
+      '/icon-512.png',
+      '/apple-touch-icon.png'
     ]))
   )
   self.skipWaiting()

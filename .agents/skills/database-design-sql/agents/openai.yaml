@@ -1,4 +1,0 @@
-interface:
-  display_name: "Database Design and SQL"
-  short_description: "Design relational schemas and practical SQL"
-  default_prompt: "Use $database-design-sql to design a normalized database and explain its SQL."

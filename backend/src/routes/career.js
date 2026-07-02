@@ -9,6 +9,7 @@ import {
   evaluateInterviewAnswer,
   publicInterviewSession,
 } from '../services/careerService.js'
+import { analyzeInterviewAnswer, geminiConfigured } from '../services/geminiService.js'
 
 const router = express.Router()
 router.use(requireAuth)
@@ -46,6 +47,11 @@ router.get('/overview', async (req, res) => {
       matchScore: app.matchScore,
     })),
     sessions,
+    interviewCoach: {
+      aiEnabled: geminiConfigured(),
+      typedAnswers: geminiConfigured() ? 'ai' : 'structured',
+      recordedAnswers: geminiConfigured(),
+    },
   })
 })
 
@@ -76,7 +82,7 @@ router.patch('/skills/:skill', async (req, res) => {
 })
 
 router.post('/interviews', async (req, res) => {
-  if (req.auth.user.tier !== 'pro') return res.status(403).json({ error: 'Upgrade to Pro to access Mock Interviews.' })
+  if (req.auth.user.tier !== 'pro') return res.status(403).json({ error: 'Upgrade to Pro to access the Interview Coach.' })
 
   let created = null
   await updateStore((store) => {
@@ -113,28 +119,49 @@ router.post('/interviews/:id/answer', async (req, res) => {
   const answer = String(req.body.answer || '').trim().slice(0, 6000)
   if (answer.length < 20) return res.status(400).json({ error: 'Give a fuller answer so the coach has enough evidence to evaluate.' })
 
+  const store = await readStore()
+  const context = userContext(store, req.auth.userId)
+  const snapshot = (store.interviewSessions || []).find(item => item.id === req.params.id && item.userId === req.auth.userId)
+  if (!snapshot) return res.status(404).json({ error: 'Interview session not found' })
+  if (snapshot.status === 'completed') return res.status(409).json({ error: 'This interview is already complete.' })
+  const question = snapshot.questions?.[snapshot.currentIndex]
+  if (!question) return res.status(409).json({ error: 'No unanswered interview question remains.' })
+
+  let feedback = evaluateInterviewAnswer(answer, question)
+  feedback.source = 'structured-fallback'
+  if (geminiConfigured()) {
+    try {
+      feedback = await analyzeInterviewAnswer({
+        answer,
+        question,
+        profile: context.resume?.profile || context.profile || req.auth.user,
+        role: snapshot.role,
+        company: snapshot.company,
+      })
+    } catch (error) {
+      console.warn('Interview AI coaching fell back to structured scoring:', error.message)
+    }
+  }
+
   let updated = null
   let conflict = ''
-  await updateStore((store) => {
-    const session = (store.interviewSessions || []).find(item => item.id === req.params.id && item.userId === req.auth.userId)
+  await updateStore((nextStore) => {
+    const session = (nextStore.interviewSessions || []).find(item => item.id === req.params.id && item.userId === req.auth.userId)
     if (!session) return
     if (session.status === 'completed') {
       conflict = 'This interview is already complete.'
       return
     }
-    const question = session.questions?.[session.currentIndex]
-    if (!question) {
-      session.status = 'completed'
-      session.completedAt = new Date().toISOString()
-      updated = session
+    if (session.currentIndex !== snapshot.currentIndex || session.questions?.[session.currentIndex]?.id !== question.id) {
+      conflict = 'This interview changed while your answer was being coached. Refresh and try again.'
       return
     }
-    const feedback = evaluateInterviewAnswer(answer, question)
     session.responses.push({
       questionId: question.id,
       question: question.prompt,
       answer,
       feedback,
+      answerMode: 'typed',
       answeredAt: new Date().toISOString(),
     })
     session.currentIndex += 1

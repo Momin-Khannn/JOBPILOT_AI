@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { CalendarClock, Check, Mail, MapPin, MessageCircle, Plus, Star } from 'lucide-react'
+import { BadgeCheck, CalendarClock, Check, Mail, MapPin, MessageCircle, Plus, Sparkles, Star } from 'lucide-react'
 
 function deadlineLabel(job) {
   if (job.deadlineStatus === 'closed') return 'Closed'
@@ -16,6 +16,7 @@ function descriptionSnippet(text = '') {
 
 export default function JobCard({ job, selected, onToggle, onOpen }) {
   const disabled = Boolean(job.isExpired || job.deadlineStatus === 'closed' || job.deadlineStatus === 'expired')
+  const isDirect = job.provider === 'jobpilot' || job.applicationMode === 'in_app'
   const reduceMotion = useReducedMotion()
   function openFromCard(event) {
     if (event.target.closest('button, a, input, select, textarea')) return
@@ -24,7 +25,7 @@ export default function JobCard({ job, selected, onToggle, onOpen }) {
   return (
     <motion.article
       layout={!reduceMotion}
-      className={`job-card ${selected ? 'selected' : ''} ${disabled ? 'job-card-disabled' : ''}`}
+      className={`job-card ${selected ? 'selected' : ''} ${disabled ? 'job-card-disabled' : ''} ${isDirect ? 'job-card-direct' : ''}`}
       initial={reduceMotion ? false : { opacity: 0, y: 14 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.14 }}
@@ -37,9 +38,13 @@ export default function JobCard({ job, selected, onToggle, onOpen }) {
           <h3><button type="button" className="job-title-button" onClick={() => onOpen(job)}>{job.title}</button></h3>
           <p>{job.company}</p>
         </div>
-        <button className="icon-button" disabled={disabled} onClick={() => onToggle(job)} aria-label={selected ? 'Remove job' : 'Select job'}>
-          {selected ? <Check size={18} /> : <Plus size={18} />}
-        </button>
+        {isDirect ? (
+          <span className="direct-verified-mark" title="Verified employer"><BadgeCheck size={18} /></span>
+        ) : (
+          <button className="icon-button" disabled={disabled} onClick={() => onToggle(job)} aria-label={selected ? 'Remove job' : 'Select job'}>
+            {selected ? <Check size={18} /> : <Plus size={18} />}
+          </button>
+        )}
       </div>
       <button type="button" className="job-card-open" onClick={() => onOpen(job)}>
         <span>View details</span>
@@ -49,7 +54,8 @@ export default function JobCard({ job, selected, onToggle, onOpen }) {
         <span>{job.type}</span>
         <span>{job.salary}</span>
         <span className={`deadline-pill deadline-${job.deadlineStatus || 'unknown'}`}><CalendarClock size={14} />{deadlineLabel(job)}</span>
-        <span>{job.source || job.provider || 'Job source'}</span>
+        <span className={isDirect ? 'direct-source-pill' : ''}>{isDirect && <BadgeCheck size={14} />}{isDirect ? 'JobPilot Direct' : (job.source || job.provider || 'Open market')}</span>
+        {job.promoted && <span className="promoted-pill"><Sparkles size={13} />Promoted</span>}
       </div>
       <p className="job-description">{descriptionSnippet(job.description)}</p>
       <div className="tag-row">
@@ -59,7 +65,7 @@ export default function JobCard({ job, selected, onToggle, onOpen }) {
         <span><Star size={15} /> Match {job.matchScore ?? '--'}%</span>
         <span>ATS {job.atsScore ?? '--'}%</span>
         <span>Risk {job.risk?.riskLevel || 'n/a'}</span>
-        <span>{job.recommendation || 'Review'}</span>
+        <span>{isDirect ? 'Apply in JobPilot' : (job.recommendation || 'Review')}</span>
         <span className="channel-hints">
           {job.recruiterEmail && <Mail size={15} />}
           {job.recruiterPhone && <MessageCircle size={15} />}

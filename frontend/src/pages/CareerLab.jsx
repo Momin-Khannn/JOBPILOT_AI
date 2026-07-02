@@ -18,6 +18,7 @@ import {
   Target,
   TrendingUp,
   Volume2,
+  VolumeX,
   Zap,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
@@ -170,7 +171,21 @@ function ScorePill({ label, value }) {
   return <div className="score-pill"><span>{label}</span><strong>{value}</strong></div>
 }
 
-function InterviewView({ applications, sessions, onRefresh, user }) {
+function preferredInterviewerVoice() {
+  const voices = window.speechSynthesis?.getVoices?.() || []
+  const englishVoices = voices.filter(voice => /^en[-_]/i.test(voice.lang || ''))
+  const voiceScore = (voice) => {
+    const name = String(voice.name || '')
+    let result = /^en-US/i.test(voice.lang || '') ? 20 : 0
+    if (/natural|neural|premium/i.test(name)) result += 100
+    if (/aria|ava|jenny|samantha|google us english/i.test(name)) result += 60
+    if (/microsoft|google|apple/i.test(name)) result += 20
+    return result
+  }
+  return [...englishVoices].sort((left, right) => voiceScore(right) - voiceScore(left))[0] || voices[0] || null
+}
+
+function InterviewView({ applications, sessions, onRefresh, user, coach }) {
   const [selectedApplication, setSelectedApplication] = useState('')
   const [session, setSession] = useState(() => sessions.find(item => item.status === 'in_progress') || null)
   const [answer, setAnswer] = useState('')
@@ -178,12 +193,16 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
   const [busy, setBusy] = useState(false)
   const [listening, setListening] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [voiceMode, setVoiceMode] = useState(true)
+  const [speaking, setSpeaking] = useState(false)
   const [error, setError] = useState('')
   const recognitionRef = useRef(null)
   const recorderRef = useRef(null)
   const recordingTimeoutRef = useRef(null)
+  const utteranceRef = useRef(null)
   const currentQuestion = session?.questions?.[session.currentIndex]
   const isPro = user?.tier === 'pro'
+  const capturingAnswer = recording || listening
 
   useEffect(() => {
     if (!session) setSession(sessions.find(item => item.status === 'in_progress') || null)
@@ -191,20 +210,78 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
 
   const speechSupported = useMemo(() => typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), [])
   const recordingSupported = useMemo(() => typeof window !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia && (window.AudioContext || window.webkitAudioContext)), [])
+  const voiceSupported = useMemo(() => typeof window !== 'undefined' && Boolean(window.speechSynthesis && window.SpeechSynthesisUtterance), [])
 
   useEffect(() => () => {
     clearTimeout(recordingTimeoutRef.current)
     recorderRef.current?.cancel().catch(() => {})
+    if (utteranceRef.current) {
+      utteranceRef.current.onend = null
+      utteranceRef.current.onerror = null
+    }
+    window.speechSynthesis?.cancel()
   }, [])
 
-  async function startInterview() {
+  function stopSpeaking() {
+    if (!voiceSupported) return
+    if (utteranceRef.current) {
+      utteranceRef.current.onend = null
+      utteranceRef.current.onerror = null
+      utteranceRef.current = null
+    }
+    window.speechSynthesis.cancel()
+    setSpeaking(false)
+  }
+
+  function speakInterviewer(message) {
+    if (!voiceSupported || !String(message || '').trim()) return
+    stopSpeaking()
+    const utterance = new window.SpeechSynthesisUtterance(String(message).trim())
+    const voice = preferredInterviewerVoice()
+    if (voice) utterance.voice = voice
+    utterance.lang = voice?.lang || 'en-US'
+    utterance.rate = 0.96
+    utterance.pitch = 0.98
+    utterance.volume = 1
+    utterance.onend = () => {
+      if (utteranceRef.current === utterance) utteranceRef.current = null
+      setSpeaking(false)
+    }
+    utterance.onerror = () => {
+      if (utteranceRef.current === utterance) utteranceRef.current = null
+      setSpeaking(false)
+    }
+    utteranceRef.current = utterance
+    setSpeaking(true)
+    window.speechSynthesis.speak(utterance)
+  }
+
+  function speakOpening(nextSession) {
+    const question = nextSession?.questions?.[nextSession.currentIndex]
+    if (!question) return
+    speakInterviewer(`Hi, I'll guide your interview today. We'll work through five questions for the ${nextSession.role} role. Take your time and answer as naturally as you can. Let's begin. ${question.prompt}`)
+  }
+
+  function speakTransition(data) {
+    const acknowledgement = data.feedback?.spokenReply || 'Thank you. That gives me helpful context.'
+    if (data.session?.status === 'completed') {
+      speakInterviewer(`${acknowledgement} That completes our practice interview. You can review your private feedback on screen.`)
+      return
+    }
+    const nextQuestion = data.session?.questions?.[data.session.currentIndex]
+    if (nextQuestion) speakInterviewer(`${acknowledgement} Let's continue. ${nextQuestion.prompt}`)
+  }
+
+  async function startInterview(spoken = true) {
     setBusy(true)
     try {
       const data = await api.startInterview(selectedApplication || undefined)
+      setVoiceMode(spoken && voiceSupported)
       setSession(data.session)
       setAnswer('')
       setFeedback(null)
       setError('')
+      if (spoken && voiceSupported) speakOpening(data.session)
       onRefresh()
     } catch (err) {
       setError(err.message)
@@ -234,6 +311,7 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
       setFeedback(data.feedback)
       setAnswer('')
       setError('')
+      if (voiceMode) speakTransition(data)
       onRefresh()
     } catch (err) {
       setError(err.message)
@@ -243,9 +321,18 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
   }
 
   function speakQuestion() {
-    if (!currentQuestion || !window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(currentQuestion.prompt))
+    if (!currentQuestion) return
+    speakInterviewer(currentQuestion.prompt)
+  }
+
+  function toggleVoiceMode() {
+    if (voiceMode) {
+      stopSpeaking()
+      setVoiceMode(false)
+      return
+    }
+    setVoiceMode(true)
+    speakQuestion()
   }
 
   function toggleDictation() {
@@ -256,6 +343,7 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
       return
     }
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    stopSpeaking()
     const recognition = new Recognition()
     recognition.continuous = true
     recognition.interimResults = true
@@ -294,6 +382,7 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
       setFeedback(data.feedback)
       setAnswer('')
       setError('')
+      if (voiceMode) speakTransition(data)
       onRefresh()
     } catch (err) {
       setError(err.message)
@@ -309,6 +398,7 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
     }
     recognitionRef.current?.stop()
     setListening(false)
+    stopSpeaking()
     try {
       recorderRef.current = await startWavRecording()
       setRecording(true)
@@ -323,9 +413,12 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
     return (
       <div className="interview-start-grid">
         <section className="panel interview-brief">
-          <span className="eyebrow">Practice room</span>
-          <h2>Turn interview prep into reps</h2>
-          <p>Choose a role, answer five tailored questions, and get scored on clarity, evidence, relevance, and structure.</p>
+          <div className="interview-brief-heading">
+            <span className="eyebrow">Interview room</span>
+            <span className={`interview-live-badge ${coach?.aiEnabled ? 'is-live' : ''}`}><Sparkles size={14} /> {coach?.aiEnabled ? 'AI coach live' : 'Structured coach ready'}</span>
+          </div>
+          <h2>Practice the interview before it counts.</h2>
+          <p>Choose a role, answer five tailored questions, and receive private coaching on clarity, evidence, relevance, and structure.</p>
           <label>Practice for
             <select value={selectedApplication} onChange={event => setSelectedApplication(event.target.value)}>
               <option value="">My primary target role</option>
@@ -334,16 +427,20 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
           </label>
           {error && <div className="alert"><AlertCircle size={18} />{error}</div>}
           {!isPro ? (
-            <div className="upgrade-prompt" style={{ padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <strong style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Lock size={16} /> Mock Interviews are a Pro feature</strong>
+            <div className="interview-upgrade">
+              <strong><Lock size={16} /> Interview Coach is a Pro feature</strong>
               <button className="button button-primary" disabled={busy} onClick={handleUpgrade}>
                 <Zap size={16} /> {busy ? 'Opening checkout...' : 'Upgrade to Pro'}
               </button>
             </div>
           ) : (
-            <button className="button button-primary" disabled={busy} onClick={startInterview}><Play size={16} /> Start five-question interview</button>
+            <div className="interview-start-actions">
+              <button className="button button-primary" disabled={busy || !voiceSupported} onClick={() => startInterview(true)}><Volume2 size={16} /> {busy ? 'Preparing your interview…' : 'Start spoken interview'}</button>
+              <button className="button button-secondary" disabled={busy} onClick={() => startInterview(false)}><Play size={16} /> Use text mode</button>
+              {!voiceSupported && <small>Your browser cannot speak questions aloud. Text mode is still available.</small>}
+            </div>
           )}
-          <small className="career-data-note">Your answers stay in your private JobPilot workspace.</small>
+          <small className="career-data-note">Your answers stay in your private JobPilot workspace. Scores are coaching signals, not hiring predictions.</small>
         </section>
         <section className="panel interview-history">
           <div className="career-panel-head"><div><span className="eyebrow">Recent practice</span><h2>Session history</h2></div><BrainCircuit size={20} /></div>
@@ -388,31 +485,51 @@ function InterviewView({ applications, sessions, onRefresh, user }) {
       <section className="interview-stage panel">
         <div className="interview-progress"><span style={{ width: `${(session.currentIndex / session.questions.length) * 100}%` }} /></div>
         <div className="interview-meta"><span>Question {session.currentIndex + 1} of {session.questions.length}</span><b>{currentQuestion?.type}</b></div>
-        <div className="interviewer-mark"><BrainCircuit size={26} /></div>
-        <h2>{currentQuestion?.prompt}</h2>
-        <button className="listen-button" onClick={speakQuestion}><Volume2 size={16} /> Read question aloud</button>
-        <form onSubmit={submitAnswer}>
-          <label htmlFor="interview-answer">Your answer</label>
-          <textarea id="interview-answer" value={answer} onChange={event => setAnswer(event.target.value)} placeholder="Use a real example. Explain your action and the result…" />
-          <div className="answer-actions">
-            <button type="button" className={`button button-secondary ${recording ? 'is-listening' : ''}`} disabled={!recordingSupported || busy} onClick={toggleRecording}>
-              {recording ? <MicOff size={16} /> : <Mic size={16} />} {recording ? 'Stop and analyze' : recordingSupported ? 'Record answer' : 'Recording unavailable'}
-            </button>
-            <button type="button" className={`button button-secondary ${listening ? 'is-listening' : ''}`} disabled={!speechSupported} onClick={toggleDictation}>
-              {listening ? <MicOff size={16} /> : <Mic size={16} />} {listening ? 'Stop dictation' : speechSupported ? 'Dictate' : 'Voice unavailable'}
-            </button>
-            <span>{answer.trim() ? answer.trim().split(/\s+/).length : 0} words</span>
-            <button className="button button-primary" disabled={busy || answer.trim().length < 20}>Submit answer <ArrowRight size={16} /></button>
+        <div className={`interviewer-presence ${speaking ? 'is-speaking' : ''} ${capturingAnswer ? 'is-listening' : ''}`} aria-live="polite">
+          <div className="interviewer-mark"><BrainCircuit size={26} /></div>
+          <div>
+            <strong>{capturingAnswer ? 'Listening to your answer' : speaking ? 'Interviewer speaking' : voiceMode ? 'Spoken interview is on' : 'Text interview'}</strong>
+            <span>{capturingAnswer ? 'Take your time—finish when you are ready' : speaking ? 'Listen, then answer when ready' : voiceMode ? 'Questions and transitions play aloud' : 'Voice is paused'}</span>
           </div>
-          <small className="career-data-note">Recorded answers are processed by Gemini for transcription and coaching. JobPilot stores the transcript and scores, not the audio recording.</small>
-        </form>
+          <button type="button" className="listen-button" aria-pressed={voiceMode} disabled={!voiceSupported || capturingAnswer} onClick={toggleVoiceMode}>{voiceMode ? <VolumeX size={16} /> : <Volume2 size={16} />}{voiceMode ? 'Use text instead' : 'Use spoken mode'}</button>
+        </div>
+        <h2>{currentQuestion?.prompt}</h2>
+        <button type="button" className="listen-button repeat-question" disabled={!voiceSupported || speaking || capturingAnswer} onClick={speakQuestion}><Volume2 size={16} /> Repeat question</button>
+        {voiceMode ? (
+          <div className={`spoken-answer-panel ${recording ? 'is-recording' : ''}`}>
+            <div className="spoken-answer-copy">
+              <span className="spoken-answer-icon">{recording ? <MicOff size={23} /> : <Mic size={23} />}</span>
+              <div>
+                <strong>{recording ? 'I’m listening' : 'Answer out loud'}</strong>
+                <p>{recording ? 'Speak naturally, then finish when you are done.' : 'No typing needed. Start when you are ready.'}</p>
+              </div>
+            </div>
+            <button type="button" className={`button ${recording ? 'button-secondary is-listening' : 'button-primary'}`} disabled={!recordingSupported || busy || speaking} onClick={toggleRecording}>
+              {recording ? <MicOff size={17} /> : <Mic size={17} />} {recording ? 'Finish answer' : recordingSupported ? 'Start answering' : 'Microphone unavailable'}
+            </button>
+            <small>Gemini transcribes and coaches your answer. JobPilot stores the transcript and scores, not the audio recording.</small>
+          </div>
+        ) : (
+          <form onSubmit={submitAnswer}>
+            <label htmlFor="interview-answer">Type your answer</label>
+            <textarea id="interview-answer" value={answer} onChange={event => setAnswer(event.target.value)} placeholder="Use a real example. Explain your action and the result…" />
+            <div className="answer-actions">
+              <button type="button" className={`button button-secondary ${listening ? 'is-listening' : ''}`} disabled={!speechSupported || speaking} onClick={toggleDictation}>
+                {listening ? <MicOff size={16} /> : <Mic size={16} />} {listening ? 'Stop dictation' : speechSupported ? 'Dictate into text' : 'Dictation unavailable'}
+              </button>
+              <span>{answer.trim() ? answer.trim().split(/\s+/).length : 0} words</span>
+              <button className="button button-primary" disabled={busy || answer.trim().length < 20}>Submit answer <ArrowRight size={16} /></button>
+            </div>
+          </form>
+        )}
         {error && <div className="alert"><AlertCircle size={18} />{error}</div>}
       </section>
 
-      <aside className="panel coach-panel">
+      <aside className="panel coach-panel" aria-live="polite">
         <div className="career-panel-head"><div><span className="eyebrow">Live coach</span><h2>{feedback ? 'Latest feedback' : 'Answer target'}</h2></div><Lightbulb size={20} /></div>
         {feedback ? (
           <>
+            <span className={`feedback-source ${feedback.source?.startsWith('gemini') ? 'is-ai' : ''}`}><Sparkles size={13} /> {feedback.source?.startsWith('gemini') ? 'AI-reviewed answer' : 'Structured coaching score'}</span>
             <div className="score-grid">
               <ScorePill label="Overall" value={feedback.overall} />
               {Object.entries(feedback.scores).map(([label, value]) => <ScorePill key={label} label={label} value={value} />)}
@@ -484,7 +601,7 @@ export default function CareerLab() {
       {!data && !error && <section className="panel"><p className="muted">Building your career intelligence…</p></section>}
       {data && activeTab === 'analytics' && <AnalyticsView analytics={data.analytics} />}
       {data && activeTab === 'skills' && <SkillsView skillGap={data.skillGap} onToggleSkill={toggleSkill} busySkill={busySkill} />}
-      {data && activeTab === 'interview' && <InterviewView applications={data.applications} sessions={data.sessions} onRefresh={load} user={user} />}
+      {data && activeTab === 'interview' && <InterviewView applications={data.applications} sessions={data.sessions} onRefresh={load} user={user} coach={data.interviewCoach} />}
     </div>
   )
 }

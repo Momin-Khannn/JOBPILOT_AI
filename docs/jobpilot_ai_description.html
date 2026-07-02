@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobPilot AI: Project Overview</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        ul, ol {
+            margin-bottom: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        strong {
+            color: #2980b9;
+        }
+        @media print {
+            body {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>JobPilot AI: Project Overview</h1>
+
+    <p>JobPilot AI is a comprehensive, review-first job application assistant designed to streamline and optimize the job search process. Built with a focus on both end-user functionality and administrative control, it provides a powerful suite of tools to help candidates secure their ideal roles while offering robust management capabilities.</p>
+
+    <h2>Core Features</h2>
+    <ul>
+        <li><strong>Intelligent CV Parsing & ATS Analysis:</strong> Parses PDF, DOCX, and TXT resumes, providing actionable feedback on Applicant Tracking System (ATS) compatibility and structural integrity.</li>
+        <li><strong>Customizable Public CV Webpages:</strong> Generates a personalized, public CV link (<code>/cv/:slug</code>) for users. These pages are fully customizable, supporting cover images, circular profile photos, colors, templates, privacy controls, and dedicated sections for projects, experience, education, and skills.</li>
+        <li><strong>Multi-Source Job Discovery:</strong> Aggregates job listings from multiple top-tier platforms including JSearch, Adzuna, Remotive, Remote OK, Arbeitnow, and USAJOBS.</li>
+        <li><strong>AI-Powered Insights:</strong> Leverages Gemini to provide match scoring against job descriptions, risk checks, decision reports, resume tailoring, and interview coaching.</li>
+        <li><strong>Review-First Communication:</strong> Facilitates sending applications and communications via Gmail and WhatsApp, enforcing a "review-first" approach with approval workflows and daily limits to maintain high quality standards.</li>
+        <li><strong>Pro Subscriptions:</strong> Includes Stripe-ready infrastructure for managing premium user subscriptions seamlessly.</li>
+        <li><strong>Automated Client Updates:</strong> Features a "Software Change Update Agent" that automatically detects codebase changes and sends professional, digested release notes to opted-in users via a configured business email account.</li>
+    </ul>
+
+    <h2>Architecture & Portals</h2>
+    <p>JobPilot AI is structured to provide secure, isolated experiences for both clients and administrators:</p>
+    <ol>
+        <li><strong>Client Application:</strong> The primary interface for job seekers to manage their career goals, tailor resumes, find jobs, and send applications. It utilizes Google OAuth for secure sign-in and isolates per-user data to ensure privacy.</li>
+        <li><strong>Owner Portal:</strong> A separate, secure interface strictly for administrators. It requires specific owner credentials and handles administrative tasks, client update configurations, and API authorization.</li>
+    </ol>
+
+    <h2>Technology & Deployment</h2>
+    <ul>
+        <li><strong>Monorepo Structure:</strong> The project is organized into distinct frontend, backend, and admin-portal components for modularity and maintainability.</li>
+        <li><strong>Deployment:</strong> Designed to be easily deployable on platforms like Railway, with distinct configurations for the public client service and the private owner portal.</li>
+        <li><strong>Local Desktop App:</strong> Includes a Windows desktop package that runs a client-only local backend for standalone usage.</li>
+    </ul>
+
+    <h2>Objective</h2>
+    <p>JobPilot AI aims to serve as the ultimate copilot for job seekers, combining the breadth of job aggregators with the precision of AI-driven resume tailoring and interview preparation, all integrated into a privacy-focused and user-friendly platform.</p>
+
+</body>
+</html>

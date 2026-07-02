@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { AlertCircle, CalendarClock, Filter, Mail, MapPin, MessageCircle, RefreshCw, Star, X } from 'lucide-react'
+import { AlertCircle, BadgeCheck, CalendarClock, Filter, Mail, MapPin, MessageCircle, RefreshCw, ShieldCheck, Sparkles, Star, X } from 'lucide-react'
 import { api } from '../api/client.js'
 import JobCard from '../components/JobCard.jsx'
 
@@ -31,6 +31,7 @@ export default function JobFeed() {
   const [channel, setChannel] = useState('gmail')
   const [whatsappRecipientOptIn, setWhatsappRecipientOptIn] = useState(false)
   const [sortBy, setSortBy] = useState('match_desc')
+  const [sourceFilter, setSourceFilter] = useState('all')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -85,7 +86,14 @@ export default function JobFeed() {
   }, [activeJob])
 
   const selectedIds = useMemo(() => new Set(selected.map(job => job.id)), [selected])
-  const orderedJobs = useMemo(() => [...jobs].sort((a, b) => {
+  const orderedJobs = useMemo(() => [...jobs].filter(job => {
+    const direct = job.provider === 'jobpilot' || job.applicationMode === 'in_app'
+    if (sourceFilter === 'direct') return direct
+    if (sourceFilter === 'external') return !direct
+    return true
+  }).sort((a, b) => {
+    const directBoost = Number(Boolean(b.promoted)) - Number(Boolean(a.promoted))
+    if (directBoost) return directBoost
     if (sortBy === 'ats_desc') return Number(b.atsScore || 0) - Number(a.atsScore || 0)
     if (sortBy === 'risk_asc' || sortBy === 'risk_desc') {
       const difference = (riskWeight[String(a.risk?.riskLevel || '').toLowerCase()] || 0) - (riskWeight[String(b.risk?.riskLevel || '').toLowerCase()] || 0)
@@ -93,9 +101,13 @@ export default function JobFeed() {
     }
     if (sortBy === 'deadline_asc') return new Date(a.expiresAt || '2999-12-31') - new Date(b.expiresAt || '2999-12-31')
     return Number(b.matchScore || 0) - Number(a.matchScore || 0)
-  }), [jobs, sortBy])
+  }), [jobs, sortBy, sourceFilter])
 
   function toggle(job) {
+    if (job.provider === 'jobpilot' || job.applicationMode === 'in_app') {
+      setActiveJob(job)
+      return
+    }
     setSelected(current => selectedIds.has(job.id)
       ? current.filter(item => item.id !== job.id)
       : [...current, job]
@@ -120,12 +132,22 @@ export default function JobFeed() {
         <div>
           <span className="eyebrow">Remote · 9-5 · internship · hybrid</span>
           <h1>Job Feed</h1>
-          <p>Search roles, compare match scores, and queue only the jobs worth reviewing.</p>
+          <p>Apply privately to verified JobPilot employers or review opportunities from the open market.</p>
         </div>
         <button className="button button-primary" onClick={queue} disabled={!selected.length || (channel === 'whatsapp' && !whatsappRecipientOptIn)}>
           Queue {selected.length || ''} for review
         </button>
       </section>
+
+      <div className="source-switcher" role="group" aria-label="Job source">
+        <button className={sourceFilter === 'all' ? 'active' : ''} onClick={() => setSourceFilter('all')}>All jobs</button>
+        <button className={sourceFilter === 'direct' ? 'active' : ''} onClick={() => setSourceFilter('direct')}><BadgeCheck size={15} /> JobPilot Direct</button>
+        <button className={sourceFilter === 'external' ? 'active' : ''} onClick={() => setSourceFilter('external')}>Open market</button>
+      </div>
+
+      {sourceFilter !== 'external' && orderedJobs.some(job => job.promoted) && (
+        <div className="promoted-disclosure"><Sparkles size={15} /><span><strong>Promoted roles</strong> are paid placements from verified employers. Promotion never changes match scoring or safety review.</span></div>
+      )}
 
       <section className="filter-panel">
         <label>
@@ -199,6 +221,10 @@ export default function JobFeed() {
             selected={selectedIds.has(activeJob.id)}
             onClose={() => setActiveJob(null)}
             onToggle={() => toggle(activeJob)}
+            onApplied={() => {
+              setMessage(`Application sent to ${activeJob.company} inside JobPilot.`)
+              setActiveJob(null)
+            }}
           />
         )}
       </AnimatePresence>, document.body)}
@@ -211,8 +237,12 @@ function deadlineText(job) {
   return job.deadlineStatus || 'Unknown'
 }
 
-function JobDetailModal({ job, selected, onClose, onToggle }) {
+function JobDetailModal({ job, selected, onClose, onToggle, onApplied }) {
   const disabled = Boolean(job.isExpired || job.deadlineStatus === 'closed' || job.deadlineStatus === 'expired')
+  const isDirect = job.provider === 'jobpilot' || job.applicationMode === 'in_app'
+  const [note, setNote] = useState('')
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState('')
   const reduceMotion = useReducedMotion()
   const closeRef = useRef(null)
 
@@ -222,6 +252,19 @@ function JobDetailModal({ job, selected, onClose, onToggle }) {
     closeRef.current?.focus()
     return () => { document.body.style.overflow = previousOverflow }
   }, [])
+
+  async function applyDirect() {
+    setApplying(true)
+    setApplyError('')
+    try {
+      await api.applyDirectJob(job.id, { note })
+      onApplied()
+    } catch (err) {
+      setApplyError(err.message)
+    } finally {
+      setApplying(false)
+    }
+  }
 
   return (
     <motion.div
@@ -251,18 +294,32 @@ function JobDetailModal({ job, selected, onClose, onToggle }) {
             <X size={18} />
           </button>
           <div>
-            <span className="eyebrow">{job.source || job.provider || 'Job source'}</span>
+            <span className="eyebrow">{isDirect ? 'JobPilot Direct · Verified employer' : (job.source || job.provider || 'Open-market source')}</span>
             <h2 id="job-detail-title">{job.title}</h2>
             <p>{job.company}</p>
           </div>
         </div>
         <div className="job-modal-content">
           <div className="job-modal-actions">
-            <button className={selected ? 'button button-secondary' : 'button button-primary'} disabled={disabled} onClick={onToggle}>
-              {selected ? 'Remove from review queue' : 'Queue for review'}
-            </button>
-            {job.url && <a className="button button-secondary" href={job.url} target="_blank" rel="noreferrer">Open original</a>}
+            {isDirect ? (
+              <span className="direct-trust-line"><ShieldCheck size={16} /> Identity checked by JobPilot</span>
+            ) : (
+              <>
+                <button className={selected ? 'button button-secondary' : 'button button-primary'} disabled={disabled} onClick={onToggle}>
+                  {selected ? 'Remove from review queue' : 'Queue for review'}
+                </button>
+                {job.url && <a className="button button-secondary" href={job.url} target="_blank" rel="noreferrer">Open original</a>}
+              </>
+            )}
           </div>
+          {isDirect && (
+            <section className="direct-apply-panel">
+              <div><BadgeCheck size={20} /><span><strong>Apply inside JobPilot</strong><small>Your verified CV is shared privately with this employer. Your email and phone stay hidden.</small></span></div>
+              <label>Optional note<textarea value={note} onChange={event => setNote(event.target.value)} maxLength={1500} placeholder="A short, relevant note for the hiring team" /></label>
+              {applyError && <div className="alert"><AlertCircle size={17} />{applyError}</div>}
+              <button className="button button-primary" disabled={disabled || applying} onClick={applyDirect}>{applying ? 'Sending application…' : 'Apply in JobPilot'}</button>
+            </section>
+          )}
           <div className="job-modal-meta">
             <span><MapPin size={15} />{job.location}</span>
             <span>{job.type}</span>

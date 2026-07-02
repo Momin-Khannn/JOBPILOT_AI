@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import express from 'express'
 import { addAuditLog, readStore, updateStore } from '../db/store.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -14,6 +15,7 @@ import {
 import {
   createGoogleClientUser,
   createClientUser,
+  createEmployerUser,
   createEmailVerificationToken,
   createPasswordResetToken,
   createSession,
@@ -34,6 +36,7 @@ import {
 } from '../services/googleAuthService.js'
 import { ensureShareableProfile } from '../services/profileService.js'
 import { publicFrontendUrl } from '../config/publicUrls.js'
+import { browserSessionPayload, clearSessionCookie, setSessionCookie } from '../services/sessionCookieService.js'
 import { validateRequest } from '../middleware/validate.js'
 import {
   emailBodySchema,
@@ -47,7 +50,7 @@ import {
 const router = express.Router()
 
 function genericResetMessage() {
-  return 'If that email belongs to a client account, a password reset link has been prepared.'
+  return 'If that email belongs to an account, a password reset link has been prepared.'
 }
 
 function emailVerificationRequired() {
@@ -57,7 +60,7 @@ function emailVerificationRequired() {
 }
 
 function genericVerificationMessage() {
-  return 'If that email belongs to an unverified client account, a new verification link has been prepared.'
+  return 'If that email belongs to an unverified account, a new verification link has been prepared.'
 }
 
 function canReturnResetToken() {
@@ -84,8 +87,21 @@ function verificationBaseUrl(req) {
   return `${req.protocol}://${req.get('host')}`
 }
 
-function verificationUrl(req, token) {
+function verificationUrl(req, token, role = 'client') {
+  if (role === 'employer') {
+    const configuredEmployerUrl = String(process.env.EMPLOYER_URL || '').replace(/\/$/, '')
+    if (configuredEmployerUrl) return `${configuredEmployerUrl}/verify-email?token=${encodeURIComponent(token)}`
+    const requestOrigin = String(req.get('origin') || '').replace(/\/$/, '')
+    if (process.env.NODE_ENV !== 'production' && requestOrigin) return `${requestOrigin}/verify-email?token=${encodeURIComponent(token)}`
+    return `${verificationBaseUrl(req)}/employer/verify-email?token=${encodeURIComponent(token)}`
+  }
   return `${verificationBaseUrl(req)}/verify-email?token=${encodeURIComponent(token)}`
+}
+
+const personalEmailDomains = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'proton.me', 'protonmail.com'])
+
+function businessDomain(email = '') {
+  return String(email).split('@')[1]?.toLowerCase() || ''
 }
 
 async function completePasswordLogin(userId) {
@@ -139,7 +155,7 @@ async function sendVerificationEmail({ req, user, token, source }) {
     const sent = await sendEmailVerificationEmail({
       to: user.email,
       name: user.name,
-      verificationUrl: verificationUrl(req, token),
+      verificationUrl: verificationUrl(req, token, user.role),
     })
     if (sent) await addAuditLog('auth.email_verification_sent', { userId: user.id, source })
     return Boolean(sent)
@@ -167,6 +183,8 @@ router.get('/security-config', (req, res) => {
   res.json({
     captchaEnabled: loginCaptchaEnabled(),
     twoFactorEnabled: loginTwoFactorEnabled(),
+    ownerGoogleEnabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    ownerPasswordEnabled: Boolean(process.env.OWNER_PASSWORD),
   })
 })
 
@@ -221,7 +239,8 @@ router.get('/google/callback', async (req, res, next) => {
         return res.redirect(googleCallbackUrl({ error: 'The owner account is not active.', role: 'owner' }))
       }
       await addAuditLog('auth.owner_google_logged_in', { email: googleProfile.email })
-      return res.redirect(googleCallbackUrl({ token: ownerPayload.token, role: 'owner' }))
+      setSessionCookie(res, ownerPayload.token, 'owner')
+      return res.redirect(googleCallbackUrl({ role: 'owner' }))
     }
     let payload = null
     let blocked = false
@@ -281,7 +300,8 @@ router.get('/google/callback', async (req, res, next) => {
 
     await addAuditLog(action, { email: googleProfile.email, provider: 'google' })
     if (isNewClient) await sendWelcomeEmailOnce(payload.user, 'google')
-    res.redirect(googleCallbackUrl({ token: payload.token, role: callbackRole }))
+    setSessionCookie(res, payload.token, callbackRole)
+    res.redirect(googleCallbackUrl({ role: callbackRole }))
   } catch (err) {
     if (err.status && err.status < 500) {
       return res.redirect(googleCallbackUrl({ error: err.message, role: callbackRole }))
@@ -290,13 +310,64 @@ router.get('/google/callback', async (req, res, next) => {
   }
 })
 
+router.get('/employer-invites/:token', async (req, res) => {
+  const tokenHash = crypto.createHash('sha256').update(String(req.params.token || '')).digest('hex')
+  const store = await readStore()
+  for (const company of store.companies || []) {
+    const invitation = (company.members || []).find(member => member.tokenHash === tokenHash && member.status === 'invited')
+    if (!invitation) continue
+    if (new Date(invitation.expiresAt || 0) <= new Date()) return res.status(410).json({ error: 'This recruiter invitation has expired.' })
+    return res.json({ invitation: { email: invitation.email, role: invitation.role, company: { name: company.name, domain: company.domain } } })
+  }
+  res.status(404).json({ error: 'Recruiter invitation not found.' })
+})
+
+router.post('/employer-invites/:token/accept', async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 120)
+  const password = String(req.body.password || '')
+  if (!name || password.length < 8 || req.body.acceptedTerms !== true) return res.status(400).json({ error: 'Enter your name, use at least eight password characters, and accept the terms.' })
+  const tokenHash = crypto.createHash('sha256').update(String(req.params.token || '')).digest('hex')
+  let payload = null
+  let failure = ''
+  await updateStore((store) => {
+    for (const company of store.companies || []) {
+      const invitation = (company.members || []).find(member => member.tokenHash === tokenHash && member.status === 'invited')
+      if (!invitation) continue
+      if (new Date(invitation.expiresAt || 0) <= new Date()) { failure = 'This recruiter invitation has expired.'; return }
+      if ((store.users || []).some(user => user.email === invitation.email)) { failure = 'An account already uses this email address.'; return }
+      const user = createEmployerUser({ name, email: invitation.email, password })
+      user.companyId = company.id
+      user.emailVerified = true
+      user.termsAcceptedAt = new Date().toISOString()
+      user.termsVersion = process.env.APP_VERSION || '2.0.1'
+      store.users.push(user)
+      invitation.userId = user.id
+      invitation.status = 'active'
+      invitation.acceptedAt = new Date().toISOString()
+      delete invitation.tokenHash
+      const { token, session } = createSession(user.id)
+      store.sessions = [session, ...(store.sessions || []).slice(0, 500)]
+      payload = { token, user: sanitizeUser(user), company: { id: company.id, name: company.name } }
+      return
+    }
+  })
+  if (!payload) return res.status(failure ? 400 : 404).json({ error: failure || 'Recruiter invitation not found.' })
+  setSessionCookie(res, payload.token, 'employer')
+  await addAuditLog('auth.employer_invite_accepted', { userId: payload.user.id, companyId: payload.company.id })
+  res.status(201).json({ user: payload.user, company: payload.company })
+})
+
 router.post('/register', validateRequest({ body: registerBodySchema }), async (req, res) => {
-  const { name, email, password } = req.body
+  const { name, email, password, role = 'client', companyName, companyWebsite } = req.body
 
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required' })
   if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' })
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' })
   if (req.body.acceptedTerms !== true) return res.status(400).json({ error: 'Accept the Terms and Privacy Notice to create an account.' })
+  if (role === 'employer' && !companyName) return res.status(400).json({ error: 'Company name is required for employer access.' })
+  if (role === 'employer' && personalEmailDomains.has(businessDomain(email))) {
+    return res.status(400).json({ error: 'Use your company email address to request employer access.' })
+  }
   if (emailVerificationRequired() && !(await businessMailReady()) && !canReturnEmailVerificationToken()) {
     return res.status(503).json({ error: 'Email verification is not configured. Please try again later.' })
   }
@@ -310,7 +381,9 @@ router.post('/register', validateRequest({ body: registerBodySchema }), async (r
       duplicateError = true
       return
     }
-    const user = createClientUser({ name, email, password })
+    const user = role === 'employer'
+      ? createEmployerUser({ name, email, password })
+      : createClientUser({ name, email, password })
     user.termsAcceptedAt = new Date().toISOString()
     user.termsVersion = process.env.APP_VERSION || '2.0.1'
     const verification = createEmailVerificationToken()
@@ -322,8 +395,37 @@ router.post('/register', validateRequest({ body: registerBodySchema }), async (r
       sentAt: null,
     }
     nextStore.users.push(user)
-    ensureShareableProfile(nextStore, user, { publishNew: true })
-    createdUser = { id: user.id, email: user.email, name: user.name }
+    if (user.role === 'client') ensureShareableProfile(nextStore, user, { publishNew: true })
+    if (user.role === 'employer') {
+      nextStore.companies ||= []
+      nextStore.employerAccessRequests ||= []
+      const company = {
+        id: `company-${user.id}`,
+        name: companyName,
+        domain: businessDomain(email),
+        website: companyWebsite || '',
+        status: 'pending',
+        ownerUserId: user.id,
+        members: [{ userId: user.id, email: user.email, role: 'admin', status: 'active', joinedAt: new Date().toISOString() }],
+        plus: { status: 'inactive' },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      nextStore.companies.push(company)
+      nextStore.employerAccessRequests.push({
+        id: `access-${user.id}`,
+        userId: user.id,
+        companyId: company.id,
+        businessEmail: user.email,
+        companyName,
+        companyWebsite: companyWebsite || '',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      user.companyId = company.id
+    }
+    createdUser = { id: user.id, email: user.email, name: user.name, role: user.role }
     if (!emailVerificationRequired()) {
       const { token, session } = createSession(user.id)
       nextStore.sessions = [session, ...(nextStore.sessions || [])]
@@ -336,7 +438,7 @@ router.post('/register', validateRequest({ body: registerBodySchema }), async (r
     return res.status(409).json({ error: 'An account with this email already exists. Please login instead.' })
   }
 
-  await addAuditLog('auth.registered', { email })
+  await addAuditLog('auth.registered', { email, role })
   const verificationSent = await sendVerificationEmail({ req, user: createdUser, token: verificationToken, source: 'registration' })
   if (verificationSent) {
     await updateStore((store) => {
@@ -355,9 +457,10 @@ router.post('/register', validateRequest({ body: registerBodySchema }), async (r
   }
   if (verificationToken && canReturnEmailVerificationToken()) {
     payload.emailVerification.verificationToken = verificationToken
-    payload.emailVerification.verificationUrl = verificationUrl(req, verificationToken)
+    payload.emailVerification.verificationUrl = verificationUrl(req, verificationToken, role)
   }
-  res.status(201).json(payload)
+  if (payload.token) setSessionCookie(res, payload.token, payload.user.role)
+  res.status(201).json(browserSessionPayload(payload))
 })
 
 router.post('/login', validateRequest({ body: loginBodySchema }), async (req, res) => {
@@ -382,7 +485,7 @@ router.post('/login', validateRequest({ body: loginBodySchema }), async (req, re
   if (user.status !== 'active') {
     return res.status(403).json({ error: 'This account is not active' })
   }
-  if (role === 'client' && emailVerificationRequired() && !user.emailVerified) {
+  if (role !== 'owner' && emailVerificationRequired() && !user.emailVerified) {
     return res.status(403).json({ error: 'Verify your email address before logging in. Use the latest verification link or request a new one.' })
   }
 
@@ -414,7 +517,8 @@ router.post('/login', validateRequest({ body: loginBodySchema }), async (req, re
   if (!payload) return res.status(403).json({ error: 'This account is not active' })
 
   await addAuditLog('auth.logged_in', { email, role })
-  res.json(payload)
+  setSessionCookie(res, payload.token, payload.user.role)
+  res.json(browserSessionPayload(payload))
 })
 
 router.post('/login/verify-2fa', validateRequest({ body: twoFactorBodySchema }), async (req, res) => {
@@ -433,7 +537,8 @@ router.post('/login/verify-2fa', validateRequest({ body: twoFactorBodySchema }),
   if (!payload) return res.status(403).json({ error: 'This account is not active' })
 
   await addAuditLog('auth.logged_in', { email: verified.email, role: verified.role, twoFactor: true })
-  res.json(payload)
+  setSessionCookie(res, payload.token, payload.user.role)
+  res.json(browserSessionPayload(payload))
 })
 
 router.post('/verify-email', validateRequest({ body: tokenBodySchema }), async (req, res) => {
@@ -446,7 +551,7 @@ router.post('/verify-email', validateRequest({ body: tokenBodySchema }), async (
 
   await updateStore((nextStore) => {
     const user = (nextStore.users || []).find(item =>
-      item.role === 'client' &&
+      ['client', 'employer'].includes(item.role) &&
       item.emailVerification?.tokenHash === tokenHash
     )
     if (!user) return
@@ -478,7 +583,7 @@ router.post('/resend-verification', validateRequest({ body: emailBodySchema }), 
   let targetUser = null
   let verificationToken = ''
   await updateStore((nextStore) => {
-    const user = (nextStore.users || []).find(item => item.email === email && item.role === 'client' && item.status === 'active' && !item.emailVerified)
+    const user = (nextStore.users || []).find(item => item.email === email && ['client', 'employer'].includes(item.role) && item.status === 'active' && !item.emailVerified)
     if (!user) return
     const verification = createEmailVerificationToken()
     verificationToken = verification.token
@@ -488,7 +593,7 @@ router.post('/resend-verification', validateRequest({ body: emailBodySchema }), 
       createdAt: verification.createdAt,
       sentAt: null,
     }
-    targetUser = { id: user.id, email: user.email, name: user.name }
+    targetUser = { id: user.id, email: user.email, name: user.name, role: user.role }
   })
 
   const verificationSent = targetUser
@@ -507,7 +612,7 @@ router.post('/resend-verification', validateRequest({ body: emailBodySchema }), 
     payload.emailVerification = {
       sent: verificationSent,
       verificationToken,
-      verificationUrl: verificationUrl(req, verificationToken),
+      verificationUrl: verificationUrl(req, verificationToken, targetUser?.role),
     }
   }
   res.json(payload)
@@ -521,7 +626,7 @@ router.post('/forgot-password', validateRequest({ body: emailBodySchema }), asyn
   let resetToken = ''
   let resetUrl = ''
   await updateStore((nextStore) => {
-    const user = (nextStore.users || []).find(item => item.email === email && item.role === 'client')
+    const user = (nextStore.users || []).find(item => item.email === email && ['client', 'employer'].includes(item.role))
     if (!user || user.status !== 'active') return
     const reset = createPasswordResetToken()
     resetToken = reset.token
@@ -568,7 +673,7 @@ router.post('/reset-password', validateRequest({ body: resetPasswordBodySchema }
 
   await updateStore((nextStore) => {
     const user = (nextStore.users || []).find(item =>
-      item.role === 'client' &&
+      ['client', 'employer'].includes(item.role) &&
       item.passwordReset?.tokenHash === tokenHash
     )
     if (!user) return
@@ -612,6 +717,7 @@ router.post('/logout', requireAuth, async (req, res) => {
   await updateStore((store) => {
     store.sessions = (store.sessions || []).filter(item => item.id !== req.auth.sessionId)
   })
+  clearSessionCookie(res, req.auth.user.role)
   await addAuditLog('auth.logged_out', { userId: req.auth.userId })
   res.json({ success: true })
 })

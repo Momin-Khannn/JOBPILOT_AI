@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, Bot, ExternalLink, MailCheck, RefreshCw, Send } from 'lucide-react'
 import { api } from '../api/client.js'
+import PageHeader from '../components/PageHeader.jsx'
 
 const initialForm = {
   title: '',
@@ -118,19 +119,13 @@ export default function ClientUpdatesPage() {
 
   return (
     <div className="stack">
-      <section className="page-heading">
-        <div>
-          <span className="eyebrow">Client Update Agent</span>
-          <h1>Automated client emails</h1>
-          <p>Send professional product and application updates through your business Gmail to active opted-in client accounts.</p>
-        </div>
-      </section>
+      <PageHeader title="Client update agent" description="Operate release emails, recipient eligibility, Gmail delivery, and portal links." meta={softwareAgent?.enabled ? 'Automation on' : 'Manual mode'} />
 
       {error && <div className="alert"><AlertCircle size={18} />{error}</div>}
       {message && <div className="success"><MailCheck size={18} />{message}</div>}
 
-      <section className="two-column">
-        <article className="panel">
+      <section className="update-workspace">
+        <article className="panel agent-panel">
           <div className="panel-head">
             <div>
               <h2>Agent status</h2>
@@ -219,7 +214,7 @@ export default function ClientUpdatesPage() {
         </form>
       </section>
 
-      <section className="panel">
+      <section className="panel data-panel">
         <div className="panel-head">
           <div>
             <h2>Registered email recipients</h2>

@@ -41,7 +41,7 @@ export default function SignupPage({ onAuthenticated }) {
         setError('')
         return
       }
-      api.setSessionToken(payload.token)
+      api.setSessionToken('')
       onAuthenticated(payload.user)
       setError('')
     } catch (err) {

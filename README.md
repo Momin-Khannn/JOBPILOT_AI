@@ -2,16 +2,23 @@
 
 JobPilot AI v2.0.1 is a review-first job application assistant with CV identity verification, ATS analysis, multi-source job discovery, Stripe-ready Pro subscriptions, Gemini cover letters and interview coaching, behavior-aware client updates, and customizable public CV webpages.
 
-## Version 2 Highlights
+## Version 2.0.1 Highlights
 
 - Client signup/login with isolated per-user data.
 - Career goal setup at `/goal`.
 - PDF, DOCX, and TXT CV parsing with ATS structure feedback.
+- CV ownership verification before applications can be approved or sent.
 - Customizable CV webpage with cover image, circular profile photo, projects, experience, education, skills, colors, templates, privacy controls, and a public `/cv/:slug` link.
 - Job aggregation from JSearch, Adzuna, Remotive, Remote OK, Arbeitnow, and USAJOBS.
 - Match scoring, risk checks, decision reports, resume tailoring, and interview preparation.
 - Review-first Gmail and WhatsApp sending with approval and daily limits.
 - A separate owner portal with owner-only API authorization.
+- PostgreSQL production persistence with automatic first-deploy migration from the attached SQLite volume.
+- Stripe Checkout, webhook, recurring-payment, cancellation, and Customer Portal support.
+- Gemini-grounded cover letters and recorded mock-interview coaching.
+- Privacy/Terms pages plus account export and permanent deletion controls.
+- Five-stage application pipeline with category filters and ATS, match, risk, and recency ordering.
+- Portal-based job detail modal, cached Google profile photos, and CV-to-role course recommendations with proof projects.
 
 ## Run Locally
 
@@ -34,6 +41,8 @@ Production owner APIs remain disabled unless `ENABLE_OWNER_PORTAL=true`. The Rai
 
 Production startup requires Google OAuth credentials, `OWNER_EMAIL`, and an `OWNER_PASSWORD` of at least 12 characters. Never deploy local development credentials.
 
+Google OAuth must be set to **In production** for accounts outside the test-user list to connect Gmail. Gmail send access is a sensitive scope, so Google verification and a verified custom domain are still required to remove the unverified-app warning and pre-verification user cap.
+
 The Windows desktop package is client-only. It does not include admin assets and starts its local backend with owner access disabled.
 
 ## Job Provider Configuration
@@ -55,11 +64,30 @@ SMTP_PASS=your-google-app-password
 SMTP_FROM="JobPilot AI <your-business@gmail.com>"
 SMTP_REPLY_TO=your-business@gmail.com
 CLIENT_UPDATE_AGENT_ENABLED=true
+CLIENT_UPDATE_PERSONALIZATION_ENABLED=true
+CLIENT_UPDATE_GEMINI_PERSONALIZATION=true
 ```
 
 Use a Google app password for `SMTP_PASS`; do not commit or paste the real password into chat.
 
-The same mailbox sends a one-time welcome email when a client account is first created through Google or password signup. Later logins do not resend it.
+The same mailbox sends a one-time welcome email when a client account is first created through Google or password signup. Later logins do not resend it. Release emails are individualized from safe workspace signals such as goal setup, CV verification, review-queue counts, interview activity, and connected delivery tools. Raw CV text, employer names, inbox contents, and private message bodies are excluded from personalization.
+
+## Pro Billing and Gemini
+
+Production Pro access changes only after verified Stripe events. The legacy direct-upgrade endpoint is disabled unless the explicit test flag is enabled.
+
+```env
+APP_VERSION=2.0.1
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+GEMINI_API_KEY=<private-gemini-key>
+GEMINI_MODEL=gemini-3.5-flash
+STRIPE_SECRET_KEY=<private-stripe-key>
+STRIPE_WEBHOOK_SECRET=<private-webhook-secret>
+STRIPE_PRO_MONTHLY_PRICE_ID=<stripe-price-id>
+STRIPE_PRO_ANNUAL_PRICE_ID=<optional-stripe-price-id>
+```
+
+Never place private provider keys in frontend variables or commit them to Git.
 
 ### Automatic Software Change Emails
 
@@ -87,7 +115,7 @@ npm audit --omit=dev
 
 ## Deploy the Public Client on Railway
 
-The included `railway.json` builds the client and runs the API as one public service. Attach a volume at `/data`, then set `JOBPILOT_DATA_DIR=/data` so accounts and OAuth tokens survive redeploys.
+The included `railway.json` builds the client and runs the API as one public service. Attach a volume at `/data`, set `JOBPILOT_DATA_DIR=/data`, and attach Railway PostgreSQL through `DATABASE_URL`. On the first PostgreSQL deployment, the backend copies the existing SQLite snapshot into PostgreSQL before accepting requests.
 
 Required production variables:
 

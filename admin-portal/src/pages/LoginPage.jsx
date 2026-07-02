@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion, useReducedMotion } from 'framer-motion'
-import { AlertCircle, BadgeCheck, LockKeyhole, RefreshCw, Shield, ShieldCheck } from 'lucide-react'
+import { AlertCircle, ArrowUpRight, BadgeCheck, Command, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react'
 import { api } from '../api/client.js'
 
 export default function LoginPage({ onAuthenticated }) {
@@ -11,13 +10,17 @@ export default function LoginPage({ onAuthenticated }) {
     password: '',
     captchaAnswer: '',
   })
-  const [security, setSecurity] = useState({ captchaEnabled: false, twoFactorEnabled: false })
+  const [security, setSecurity] = useState({
+    captchaEnabled: false,
+    twoFactorEnabled: false,
+    ownerGoogleEnabled: false,
+    ownerPasswordEnabled: false,
+  })
   const [captcha, setCaptcha] = useState(null)
   const [twoFactor, setTwoFactor] = useState(null)
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const reduceMotion = useReducedMotion()
 
   async function loadCaptcha() {
     const payload = await api.captcha()
@@ -50,7 +53,7 @@ export default function LoginPage({ onAuthenticated }) {
         setError('')
         return
       }
-      api.setSessionToken(payload.token)
+      api.setSessionToken('')
       onAuthenticated(payload.user)
       setError('')
     } catch (err) {
@@ -66,7 +69,7 @@ export default function LoginPage({ onAuthenticated }) {
     setBusy(true)
     try {
       const payload = await api.verifyTwoFactor({ challengeId: twoFactor.challengeId, code })
-      api.setSessionToken(payload.token)
+      api.setSessionToken('')
       onAuthenticated(payload.user)
       setError('')
     } catch (err) {
@@ -95,18 +98,21 @@ export default function LoginPage({ onAuthenticated }) {
   }
 
   return (
-    <div className="login-shell admin-login-shell">
-      <motion.section className="login-copy" initial={reduceMotion ? false : { opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <div className="admin-login-brand"><span><Shield size={18} /></span><strong>JobPilot</strong><small>ADMIN</small></div>
-        <span className="eyebrow">Private owner software</span>
-        <h1>Run the platform with quiet confidence.</h1>
-        <p>One secure control room for users, applications, provider health, client updates, and the audit trail behind every change.</p>
-        <div className="admin-login-proof"><span><ShieldCheck size={16} /> Owner-only access</span><span><BadgeCheck size={16} /> Complete audit visibility</span></div>
-        {import.meta.env.DEV && <p className="muted">Local demo owner: owner@jobpilot.ai / owner12345</p>}
-      </motion.section>
+    <div className="owner-login-shell">
+      <section className="owner-login-brief">
+        <div className="admin-login-brand"><span><Command size={18} /></span><strong>JobPilot Control</strong><small>OWNER</small></div>
+        <div className="owner-login-copy">
+          <span>Private operations workspace</span>
+          <h1>The operating layer behind JobPilot.</h1>
+          <p>Control client access, application traffic, delivery infrastructure, and the system record from a workspace built only for ownership.</p>
+        </div>
+        <div className="admin-login-proof"><span><ShieldCheck size={17} /><strong>Restricted access</strong><small>Owner identity is checked on every session.</small></span><span><BadgeCheck size={17} /><strong>Audited actions</strong><small>Operational changes remain reviewable.</small></span></div>
+      </section>
 
-      <motion.form className="panel login-panel" onSubmit={twoFactor ? verifyCode : submit} initial={reduceMotion ? false : { opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.55, delay: 0.08 }}>
-        <div className="admin-form-head"><span>Secure owner session</span><strong>Sign in</strong></div>
+      <main className="owner-login-entry">
+      <div className="mobile-login-brand"><span><Command size={17} /></span><strong>JobPilot Control</strong><small>OWNER</small></div>
+      <form className="login-panel" onSubmit={twoFactor ? verifyCode : submit}>
+        <div className="admin-form-head"><span>Protected workspace</span><strong>{twoFactor ? 'Verify your sign-in' : 'Sign in to Control'}</strong><p>{twoFactor ? 'Use the short-lived code sent to the owner email.' : 'Use your approved Google account or owner credentials.'}</p></div>
         {error && <div className="alert"><AlertCircle size={18} />{error}</div>}
 
         {twoFactor ? (
@@ -136,32 +142,38 @@ export default function LoginPage({ onAuthenticated }) {
         ) : (
           <>
 
-            <button className="button button-primary" type="button" disabled={busy} onClick={continueWithGoogle}>
-              <ShieldCheck size={15} />
-              {busy ? 'Opening Google...' : 'Continue with owner Google account'}
-            </button>
+            {security.ownerGoogleEnabled && (
+              <button className="button button-primary" type="button" disabled={busy} onClick={continueWithGoogle}>
+                <ArrowUpRight size={16} />
+                {busy ? 'Opening Google...' : 'Continue with owner Google account'}
+              </button>
+            )}
 
-            <div className="login-divider"><span>or use owner password</span></div>
+            {security.ownerGoogleEnabled && security.ownerPasswordEnabled && <div className="login-divider"><span>or use owner password</span></div>}
 
-            <label>
-              Owner email
-              <input
-                type="email"
-                placeholder="owner@yourcompany.com"
-                value={form.email}
-                onChange={event => setForm({ ...form, email: event.target.value })}
-              />
-            </label>
+            {security.ownerPasswordEnabled && (
+              <>
+                <label>
+                  Owner email
+                  <input
+                    type="email"
+                    placeholder="owner@yourcompany.com"
+                    value={form.email}
+                    onChange={event => setForm({ ...form, email: event.target.value })}
+                  />
+                </label>
 
-            <label>
-              Password
-              <input
-                type="password"
-                placeholder="Your password"
-                value={form.password}
-                onChange={event => setForm({ ...form, password: event.target.value })}
-              />
-            </label>
+                <label>
+                  Password
+                  <input
+                    type="password"
+                    placeholder="Your password"
+                    value={form.password}
+                    onChange={event => setForm({ ...form, password: event.target.value })}
+                  />
+                </label>
+              </>
+            )}
 
             {security.captchaEnabled && captcha && (
               <div className="captcha-block">
@@ -183,10 +195,14 @@ export default function LoginPage({ onAuthenticated }) {
               </div>
             )}
 
-            <button className="button button-secondary" disabled={busy || (security.captchaEnabled && (!captcha || form.captchaAnswer.length !== 5))}>
-              <LockKeyhole size={15} />
-              {busy ? 'Signing in...' : security.twoFactorEnabled ? 'Continue securely' : 'Login to admin portal'}
-            </button>
+            {security.ownerPasswordEnabled && (
+              <button className="button button-secondary" disabled={busy || (security.captchaEnabled && (!captcha || form.captchaAnswer.length !== 5))}>
+                <LockKeyhole size={15} />
+                {busy ? 'Signing in...' : security.twoFactorEnabled ? 'Continue securely' : 'Login to admin portal'}
+              </button>
+            )}
+
+            {!security.ownerGoogleEnabled && !security.ownerPasswordEnabled && <div className="alert"><AlertCircle size={18} />Owner sign-in is not configured in this environment.</div>}
 
             <div className="login-links">
               <a href={clientLoginHref}>Open client login</a>
@@ -194,7 +210,9 @@ export default function LoginPage({ onAuthenticated }) {
             </div>
           </>
         )}
-      </motion.form>
+      </form>
+      <p className="login-entry-note"><LockKeyhole size={14} /> Access is limited to approved owner identities.</p>
+      </main>
     </div>
   )
 }

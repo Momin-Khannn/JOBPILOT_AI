@@ -36,6 +36,7 @@ const navGroups = [
       { to: '/dashboard', label: 'Overview', icon: BarChart3 },
       { to: '/jobs', label: 'Discover jobs', icon: BriefcaseBusiness },
       { to: '/applications', label: 'Applications', icon: History },
+      { to: '/messages', label: 'Messages', icon: MessageCircle },
       { to: '/career-lab', label: 'Career Lab', icon: BrainCircuit, featured: true },
     ],
   },
@@ -43,7 +44,7 @@ const navGroups = [
     label: 'Career assets',
     links: [
       { to: '/goal', label: 'Career goal', icon: Flag },
-      { to: '/resume', label: 'Resume', icon: FileText },
+      { to: '/resume', label: 'Upload CV', icon: FileText },
       { to: '/profile', label: 'CV webpage', icon: PanelsTopLeft },
     ],
   },
@@ -60,6 +61,7 @@ const navGroups = [
 
 const drawerLinks = [
   { to: '/settings', label: 'Account settings', helper: 'Preferences, limits, and update emails', icon: UserRound },
+  { to: '/resume', label: 'Upload or replace CV', helper: 'Choose a PDF, DOCX, or TXT from your device', icon: FileText },
   { to: '/gmail', label: 'Gmail delivery', helper: 'Google OAuth mailbox connection', icon: Mail },
   { to: '/whatsapp', label: 'WhatsApp delivery', helper: 'Twilio or Meta Cloud API', icon: MessageCircle },
   { to: '/profile', label: 'Public CV page', helper: 'Design, sections, and privacy controls', icon: PanelsTopLeft },
@@ -69,9 +71,10 @@ const pageMeta = {
   '/dashboard': { label: 'Overview', eyebrow: 'Command center' },
   '/goal': { label: 'Career goal', eyebrow: 'Direction' },
   '/jobs': { label: 'Discover jobs', eyebrow: 'Opportunity feed' },
-  '/resume': { label: 'Resume', eyebrow: 'Career assets' },
+  '/resume': { label: 'Upload CV', eyebrow: 'Career assets' },
   '/profile': { label: 'CV webpage', eyebrow: 'Personal brand' },
   '/applications': { label: 'Applications', eyebrow: 'Pipeline' },
+  '/messages': { label: 'Messages', eyebrow: 'Direct hiring' },
   '/career-lab': { label: 'Career Lab', eyebrow: 'Intelligence' },
   '/followups': { label: 'Follow-ups', eyebrow: 'Automation' },
   '/inbox': { label: 'Inbox monitor', eyebrow: 'Signals' },
