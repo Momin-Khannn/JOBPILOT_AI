@@ -50,6 +50,143 @@ function sentenceCase(value) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+const resumeSectionPatterns = {
+  summary: /^(professional\s+)?(summary|profile|objective|about)$/i,
+  skills: /^(technical\s+)?(skills|technologies|tools|core competencies)$/i,
+  experience: /^(professional\s+|work\s+)?(experience|employment|work history|career history)$/i,
+  projects: /^(personal\s+|academic\s+|selected\s+|portfolio\s+)?projects?$/i,
+  education: /^(education|academic background|qualifications)$/i,
+  certifications: /^(certifications?|licenses?|awards?)$/i,
+  languages: /^languages?$/i,
+}
+
+function resumeSection(line = '') {
+  const heading = String(line).trim().replace(/[:：]\s*$/, '')
+  return Object.entries(resumeSectionPatterns).find(([, pattern]) => pattern.test(heading))?.[0] || ''
+}
+
+function sectionLines(lines, section) {
+  const collected = []
+  let active = ''
+  for (const line of lines) {
+    const heading = resumeSection(line)
+    if (heading) {
+      active = heading
+      continue
+    }
+    if (active === section) collected.push(line)
+  }
+  return collected
+}
+
+function cleanBullet(line = '') {
+  return String(line).replace(/^[\s•●▪◦*-]+/, '').trim()
+}
+
+function isBullet(line = '') {
+  return /^[\s]*[•●▪◦*-]\s+/.test(String(line))
+}
+
+const durationPattern = /\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|spring|summer|fall|winter)\s+)?(?:19|20)\d{2}\s*[-–—]\s*(?:(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|spring|summer|fall|winter)\s+)?(?:19|20)\d{2}|present|current|now)\b|\b(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|spring|summer|fall|winter)\s+)?(?:19|20)\d{2}\b|\b(?:present|current)\b/i
+const jobTitlePattern = /\b(engineer|developer|analyst|manager|assistant|intern|consultant|designer|specialist|lead|director|officer|coordinator|administrator|architect|scientist|accountant|teacher|professor|founder|owner)\b/i
+
+function parseExperienceHeader(line = '') {
+  const parts = String(line).split(/\s*[|•·]\s*/).map(part => part.trim()).filter(Boolean)
+  if (parts.length >= 2) {
+    return {
+      title: parts[0],
+      company: parts.length >= 3 ? parts[1] : (durationPattern.test(parts[1]) ? '' : parts[1]),
+      duration: parts.find((part, index) => index > 0 && durationPattern.test(part)) || '',
+    }
+  }
+  const atParts = String(line).split(/\s+at\s+/i).map(part => part.trim()).filter(Boolean)
+  if (atParts.length === 2) return { title: atParts[0], company: atParts[1], duration: '' }
+  return { title: String(line).trim(), company: '', duration: '' }
+}
+
+function parseExperienceSection(lines = []) {
+  const records = []
+  let current = null
+  const commit = () => {
+    if (!current?.title) return
+    records.push({
+      title: current.title,
+      company: current.company || '',
+      duration: current.duration || '',
+      description: current.description.filter(Boolean).join(' '),
+      bullets: current.description.filter(Boolean),
+    })
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine).trim()
+    if (!line) continue
+    if (isBullet(line)) {
+      if (current) current.description.push(cleanBullet(line))
+      continue
+    }
+    if (current && durationPattern.test(line)) {
+      current.duration ||= line.match(durationPattern)?.[0] || line
+      const company = line.replace(durationPattern, '').replace(/^[\s|,–—-]+|[\s|,–—-]+$/g, '').trim()
+      current.company ||= company
+      continue
+    }
+    if (current && !current.company && !jobTitlePattern.test(line)) {
+      current.company = line
+      continue
+    }
+    commit()
+    current = { ...parseExperienceHeader(line), description: [] }
+  }
+  commit()
+  return records.slice(0, 12)
+}
+
+function parseProjectSection(lines = []) {
+  const records = []
+  let current = null
+  const commit = () => {
+    if (!current?.name) return
+    records.push({
+      name: current.name,
+      url: current.url || '',
+      technologies: current.technologies || '',
+      description: current.description.filter(Boolean).join(' '),
+    })
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine).trim()
+    if (!line) continue
+    const url = line.match(/https?:\/\/[^\s]+/i)?.[0] || ''
+    const technologies = line.match(/^(?:technologies|tech(?:nology)? stack|tools)\s*:\s*(.+)$/i)?.[1] || ''
+    if (isBullet(line)) {
+      if (current) current.description.push(cleanBullet(line))
+      continue
+    }
+    if (current && url) {
+      current.url ||= url
+      const detail = line.replace(url, '').replace(/^[\s|,–—-]+|[\s|,–—-]+$/g, '').trim()
+      if (detail) current.description.push(detail)
+      continue
+    }
+    if (current && technologies) {
+      current.technologies ||= technologies
+      continue
+    }
+    commit()
+    const parts = line.replace(/^project\s*:\s*/i, '').split(/\s*[|•·]\s*/).map(part => part.trim()).filter(Boolean)
+    current = {
+      name: parts[0] || line,
+      technologies: parts.slice(1).join(', '),
+      url: '',
+      description: [],
+    }
+  }
+  commit()
+  return records.slice(0, 12)
+}
+
 export function parseResumeText(text = '') {
   const clean = text.replace(/\s+/g, ' ').trim()
   const lower = clean.toLowerCase()
@@ -74,13 +211,17 @@ export function parseResumeText(text = '') {
     .slice(0, 4)
     .map(line => ({ degree: line, institution: '', year: line.match(/\b(20\d{2}|19\d{2})\b/)?.[0] || '' }))
 
-  const experienceLines = lines
-    .filter(line => /developer|engineer|analyst|intern|manager|assistant|project|built|created|designed|implemented|managed|led|improved/i.test(line))
+  const parsedExperience = parseExperienceSection(sectionLines(lines, 'experience'))
+  const parsedProjects = parseProjectSection(sectionLines(lines, 'projects'))
+  const experienceLines = parsedExperience.length ? [] : lines
+    .filter(line => /developer|engineer|analyst|intern|manager|assistant|built|created|designed|implemented|managed|led|improved/i.test(line))
+    .filter(line => !resumeSection(line))
     .slice(0, 8)
   const hasMetrics = /\b\d+(?:\.\d+)?%|\b\d+\+|\b\d{2,}\b/.test(clean)
   const hasSummarySection = /\b(summary|profile|objective)\b/i.test(text)
   const hasSkillsSection = /\b(skills|technologies|technical skills|tools)\b/i.test(text)
-  const hasExperienceSection = /\b(experience|employment|work history|projects)\b/i.test(text)
+  const hasExperienceSection = /\b(experience|employment|work history)\b/i.test(text)
+  const hasProjectsSection = /\bprojects?\b/i.test(text)
   const hasEducationSection = /\b(education|academic|university|college|degree)\b/i.test(text)
   const rawScore =
     (email ? 8 : 0) +
@@ -89,7 +230,7 @@ export function parseResumeText(text = '') {
     (hasSummarySection ? 10 : clean.length >= 250 ? 5 : 0) +
     (hasSkillsSection ? 10 : 0) +
     Math.min(15, skills.length * 2) +
-    (hasExperienceSection ? 12 : experienceLines.length ? 6 : 0) +
+    (hasExperienceSection || hasProjectsSection ? 12 : experienceLines.length ? 6 : 0) +
     (hasEducationSection ? 10 : education.length ? 6 : 0) +
     (hasMetrics ? 8 : 0) +
     (clean.length >= 700 && clean.length <= 9000 ? 10 : clean.length >= 350 ? 5 : 0) +
@@ -108,9 +249,10 @@ export function parseResumeText(text = '') {
     summary,
     skills: [...new Set(skills)],
     education,
-    experience: experienceLines
-      .slice(0, 8)
-      .map(line => ({ title: line, company: '', duration: '', bullets: [] })),
+    experience: parsedExperience.length
+      ? parsedExperience
+      : experienceLines.slice(0, 8).map(line => ({ title: line, company: '', duration: '', description: '', bullets: [] })),
+    projects: parsedProjects,
     atsScore: Math.min(100, rawScore),
     atsBreakdown: {
       contact: (email ? 8 : 0) + (phone ? 7 : 0),
@@ -124,7 +266,7 @@ export function parseResumeText(text = '') {
       ...(skills.length < 6 ? ['Add a dedicated skills section with tools and technologies from target jobs.'] : []),
       ...(!linkedIn ? ['Add a LinkedIn profile link for recruiter trust.'] : []),
       ...(!hasSummarySection ? ['Add a short professional summary tailored to your target role.'] : []),
-      ...(!hasExperienceSection ? ['Use a clear experience or projects section with role-relevant achievements.'] : []),
+      ...(!hasExperienceSection && !hasProjectsSection ? ['Use clear experience and projects sections with role-relevant achievements.'] : []),
       ...(!hasMetrics ? ['Quantify achievements with metrics where possible.'] : []),
     ].slice(0, 5),
     topMatches: inferTopMatches(skills, clean),

@@ -1,6 +1,8 @@
 import { v4 as uuid } from 'uuid'
 
 const sectionNames = ['about', 'skills', 'experience', 'projects', 'education', 'certifications', 'languages']
+const experienceFields = [['title', 120], ['company', 120], ['duration', 80], ['description', 900]]
+const projectFields = [['name', 140], ['url', 300], ['description', 900], ['technologies', 300]]
 
 function text(value, max = 500) {
   return String(value || '').trim().slice(0, max)
@@ -18,6 +20,40 @@ function objectList(value, fields, limit = 12) {
     .slice(0, limit)
     .map((item = {}) => Object.fromEntries(fields.map(([field, max]) => [field, text(item[field], max)])))
     .filter(item => Object.values(item).some(Boolean))
+}
+
+function importedExperience(source = {}) {
+  return objectList((source.experience || []).map(item => ({
+    ...item,
+    description: item.description || (item.bullets || []).join(' '),
+  })), experienceFields)
+}
+
+function importedProjects(source = {}) {
+  return objectList(source.projects, projectFields)
+}
+
+function recordKey(parts = []) {
+  return parts.map(part => text(part, 160).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()).filter(Boolean).join('|')
+}
+
+function mergeLinkedRecords(existing, incoming, fields, keyFor) {
+  const saved = objectList(existing, fields)
+  const imported = objectList(incoming, fields)
+  const savedByKey = new Map(saved.map(item => [keyFor(item), item]).filter(([key]) => key))
+  const consumed = new Set()
+  const merged = imported.map(item => {
+    const key = keyFor(item)
+    const previous = savedByKey.get(key)
+    if (key) consumed.add(key)
+    if (!previous) return item
+    return Object.fromEntries(fields.map(([field]) => [field, item[field] || previous[field] || '']))
+  })
+  for (const item of saved) {
+    const key = keyFor(item)
+    if (!key || !consumed.has(key)) merged.push(item)
+  }
+  return merged.slice(0, 12)
 }
 
 function imageValue(value, max) {
@@ -76,9 +112,9 @@ export function buildProfile({ user = {}, resume = null, existing = null } = {})
       cover: imageValue(base.images?.cover, 6_500_000),
     },
     skills,
-    experience: base.experience?.length ? base.experience : (source.experience || []),
+    experience: base.experience?.length ? base.experience : importedExperience(source),
     education: base.education?.length ? base.education : (source.education || []),
-    projects: base.projects || [],
+    projects: base.projects?.length ? base.projects : importedProjects(source),
     certifications: textList(base.certifications, 20, 160),
     languages: textList(base.languages, 20, 80),
     theme: {
@@ -122,9 +158,9 @@ export function normalizeProfile(input = {}, context = {}) {
     cover: imageValue(input.images?.cover || profile.images.cover, 6_500_000),
   }
   profile.skills = textList(input.skills)
-  profile.experience = objectList(input.experience, [['title', 120], ['company', 120], ['duration', 80], ['description', 900]])
+  profile.experience = objectList(input.experience, experienceFields)
   profile.education = objectList(input.education, [['degree', 160], ['institution', 160], ['year', 40], ['description', 500]])
-  profile.projects = objectList(input.projects, [['name', 140], ['url', 300], ['description', 900], ['technologies', 300]])
+  profile.projects = objectList(input.projects, projectFields)
   profile.certifications = textList(input.certifications, 20, 160)
   profile.languages = textList(input.languages, 20, 80)
   profile.theme = {
@@ -156,11 +192,34 @@ export function mergeResumeIntoProfile(profile, resume, user) {
     displayName: profile?.displayName || source.name || user?.name || '',
     about: profile?.about || source.summary || '',
     skills: [...new Set([...(profile?.skills || []), ...(source.skills || [])])].slice(0, 30),
-    experience: profile?.experience?.length ? profile.experience : source.experience || [],
+    experience: mergeLinkedRecords(
+      profile?.experience,
+      importedExperience(source),
+      experienceFields,
+      item => recordKey([item.title, item.company]),
+    ),
     education: profile?.education?.length ? profile.education : source.education || [],
+    projects: mergeLinkedRecords(
+      profile?.projects,
+      importedProjects(source),
+      projectFields,
+      item => recordKey([item.name]),
+    ),
     visibility: profile?.visibility || { ...imported.visibility, email: false, phone: false },
     updatedAt: new Date().toISOString(),
   }
+}
+
+export function syncProfileSectionsIntoResume(resume, profile) {
+  if (!resume?.profile || !profile) return resume
+  const experience = objectList(profile.experience, experienceFields)
+  resume.profile.experience = experience.map(item => ({
+    ...item,
+    bullets: item.description ? [item.description] : [],
+  }))
+  resume.profile.projects = objectList(profile.projects, projectFields)
+  resume.profile.profileSyncedAt = new Date().toISOString()
+  return resume
 }
 
 export function ensureShareableProfile(store, user, { resume = null, publishNew = true, publishExisting = false } = {}) {

@@ -2,7 +2,7 @@ import express from 'express'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth.js'
 import { addAuditLog, readStore, updateStore } from '../db/store.js'
-import { buildProfile, ensureShareableProfile, normalizeProfile, publicProfile } from '../services/profileService.js'
+import { buildProfile, ensureShareableProfile, normalizeProfile, publicProfile, syncProfileSectionsIntoResume } from '../services/profileService.js'
 import { validateImageUpload } from '../services/fileValidationService.js'
 import { validateRequest } from '../middleware/validate.js'
 import { profileImageBodySchema } from '../validation/schemas.js'
@@ -52,6 +52,7 @@ router.put('/me', async (req, res) => {
     const index = (store.profiles || []).findIndex(item => item.userId === req.auth.userId)
     if (index >= 0) store.profiles[index] = profile
     else store.profiles.push(profile)
+    if (resume) syncProfileSectionsIntoResume(resume, profile)
     saved = profile
   })
   if (slugConflict) return res.status(409).json({ error: 'That public CV address is already in use' })
